@@ -1,17 +1,54 @@
+import { useState } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Phone, Mail, MapPin, Clock, Send, CheckCircle } from "lucide-react";
+import { Phone, Mail, MapPin, Clock, Send, CheckCircle, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
+import axios from 'axios';
 
 interface ContactProps {
   season: 'summer' | 'winter';
 }
 
 export function Contact({ season }: ContactProps) {
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    phone: '',
+    service: '',
+    message: '',
+  });
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+  const [responseMsg, setResponseMsg] = useState('');
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { id, value } = e.target;
+    setFormData(prev => ({ ...prev, [id]: value }));
+  };
+
+  const handleServiceChange = (value: string) => {
+    setFormData(prev => ({ ...prev, service: value }));
+  };
+
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setStatus('loading');
+    setResponseMsg('');
+
+    try {
+      const response = await axios.post('http://localhost:5000/api/contact', formData);
+      setStatus('success');
+      setResponseMsg(response.data.message);
+      setFormData({ name: '', email: '', phone: '', service: '', message: '' });
+    } catch (error: any) {
+      setStatus('error');
+      setResponseMsg(error.response?.data?.error || 'An unexpected error occurred.');
+    }
+  };
+
   return (
     <section id="contact" className="py-24 bg-gradient-to-br from-background to-muted/20">
       <div className="container mx-auto px-6">
@@ -121,32 +158,28 @@ export function Contact({ season }: ContactProps) {
                 </p>
               </div>
 
-              <form className="space-y-6">
+              <form onSubmit={handleSubmit} className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input id="firstName" placeholder="John" className="h-12" />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input id="lastName" placeholder="Doe" className="h-12" />
+                    <Label htmlFor="name">Full Name</Label>
+                    <Input id="name" placeholder="John Doe" className="h-12" value={formData.name} onChange={handleInputChange} required />
                   </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email Address</Label>
-                    <Input id="email" type="email" placeholder="john@example.com" className="h-12" />
+                    <Input id="email" type="email" placeholder="john@example.com" className="h-12" value={formData.email} onChange={handleInputChange} required />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Phone Number</Label>
-                    <Input id="phone" type="tel" placeholder="(555) 123-4567" className="h-12" />
+                    <Input id="phone" type="tel" placeholder="(555) 123-4567" className="h-12" value={formData.phone} onChange={handleInputChange} />
                   </div>
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="service">Service Needed</Label>
-                  <Select>
+                  <Select onValueChange={handleServiceChange} value={formData.service}>
                     <SelectTrigger className="h-12">
                       <SelectValue placeholder="What service are you interested in?" />
                     </SelectTrigger>
@@ -162,25 +195,36 @@ export function Contact({ season }: ContactProps) {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="address">Property Address</Label>
-                  <Input id="address" placeholder="123 Main St, City, State 12345" className="h-12" />
-                </div>
-
-                <div className="space-y-2">
                   <Label htmlFor="message">Project Details</Label>
                   <Textarea 
                     id="message" 
                     placeholder="Tell us about your property size, specific needs, timeline, or any questions you have..."
                     rows={4}
                     className="resize-none"
+                    value={formData.message}
+                    onChange={handleInputChange}
+                    required
                   />
                 </div>
 
-                <Button className="w-full h-12 text-base group">
-                  <Send className="mr-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  Send Quote Request
+                <Button type="submit" className="w-full h-12 text-base group" disabled={status === 'loading'}>
+                  {status === 'loading' ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Sending...</>
+                  ) : (
+                    <><Send className="mr-2 h-4 w-4 group-hover:translate-x-1 transition-transform" /> Send Quote Request</>
+                  )}
                 </Button>
                 
+                {status === 'success' && (
+                  <div className="text-green-600 bg-green-50 p-3 rounded-md text-center">
+                    {responseMsg}
+                  </div>
+                )}
+                {status === 'error' && (
+                  <div className="text-red-600 bg-red-50 p-3 rounded-md text-center">
+                    {responseMsg}
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground text-center leading-relaxed">
                   By submitting this form, you agree to be contacted by ProSeason regarding your service request. 
                   We respect your privacy and never share your information.

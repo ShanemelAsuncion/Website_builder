@@ -1,20 +1,15 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { contentApi } from '../../services/api';
+import { contentApi, authApi } from '../../services/api';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
-import { Badge } from '../ui/badge';
 import { Switch } from '../ui/switch';
-import { Separator } from '../ui/separator';
 import { motion } from 'framer-motion';
 import { 
-  LogOut, 
-  Save, 
-  Eye, 
   Settings, 
   FileText, 
   Image as ImageIcon, 
@@ -24,49 +19,28 @@ import {
   Star,
   Plus,
   Trash2,
-  Edit3,
   Snowflake,
-  Sun
+  Sun,
+  KeyRound,
+  RefreshCw
 } from 'lucide-react';
 
-interface ContentItem {
-  id: string;
-  key: string;
-  value: string;
-  type: 'text' | 'image' | 'html';
-  createdAt: string;
-  updatedAt: string;
-}
-
+// Type definitions
 interface DashboardContextType {
   season: 'summer' | 'winter';
   onSeasonToggle: () => void;
-  onLogout: () => void;
-  onPreview: () => void;
+  setHeaderControls?: (controls: { hasUnsavedChanges?: boolean; onSave?: () => void }) => void;
 }
 
+type PortfolioItem = { id: string; title: string; description: string; imageUrl: string; location: string; duration: string; };
+type ServiceItem = { id: string; title: string; description: string; price: string };
+type TestimonialItem = { id: string; name: string; role: string; rating: number; comment: string };
+
+// The Dashboard Component
 export const Dashboard = () => {
-  // Get context from AdminLayout
   const context = useOutletContext<DashboardContextType>();
-  const { 
-    season = 'summer', 
-    onSeasonToggle = () => console.log('Season toggle clicked'), 
-    onLogout = () => console.log('Logout clicked'), 
-    onPreview = () => console.log('Preview clicked') 
-  } = context || {};
+  const { season, onSeasonToggle, setHeaderControls } = context || {};
   
-  console.log('Dashboard context:', { season, onSeasonToggle, onLogout, onPreview });
-  
-  // Show loading state if context is not available yet
-  if (!context) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-blue-500"></div>
-      </div>
-    );
-  }
-  
-  const [content, setContent] = useState<ContentItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState('');
@@ -74,729 +48,369 @@ export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState("hero");
   const navigate = useNavigate();
   
-  // Sample content state - will be replaced with API data
-  const [uiContent, setUiContent] = useState<{
+  const [uiContent, setUiContent] = useState({
     hero: {
-      summer: { title: string; subtitle: string; ctaText: string };
-      winter: { title: string; subtitle: string; ctaText: string };
-    };
-    services: {
-      summer: Array<{ id: string; title: string; description: string; price: string }>;
-      winter: Array<{ id: string; title: string; description: string; price: string }>;
-    };
-    contact: {
-      phone: string;
-      email: string;
-      address: string;
-    };
-  }>({
-    hero: {
-      summer: {
-        title: "Transform Your Landscape",
-        subtitle: "Professional lawn care and landscape design that brings your outdoor vision to life",
-        ctaText: "Get Free Quote"
-      },
-      winter: {
-        title: "Snow Removal Experts",
-        subtitle: "24/7 professional snow and ice management to keep your property safe and accessible",
-        ctaText: "Get Winter Service"
-      }
+      summer: { title: "", subtitle: "", ctaText: "" },
+      winter: { title: "", subtitle: "", ctaText: "" }
     },
     services: {
-      summer: [
-        { id: '1', title: "Lawn Care", description: "Regular mowing, edging, and maintenance", price: "Starting at $50/visit" },
-        { id: '2', title: "Landscape Design", description: "Custom outdoor space planning", price: "Starting at $500" },
-        { id: '3', title: "Garden Maintenance", description: "Pruning, weeding, and care", price: "Starting at $75/visit" }
-      ],
-      winter: [
-        { id: '4', title: "Snow Plowing", description: "Driveway and parking lot clearing", price: "Starting at $75/visit" },
-        { id: '5', title: "Ice Management", description: "Salt and sand application", price: "Starting at $45/visit" },
-        { id: '6', title: "Emergency Service", description: "24/7 storm response", price: "Starting at $125/visit" }
-      ]
+      summer: [] as ServiceItem[],
+      winter: [] as ServiceItem[]
     },
-    contact: {
-      phone: "(555) 123-4567",
-      email: "info@bladesnowpro.com",
-      address: "123 Service Drive, Your City, ST 12345"
-    }
+    portfolio: {
+      summer: [] as PortfolioItem[],
+      winter: [] as PortfolioItem[]
+    },
+    testimonials: [] as TestimonialItem[],
+    contact: { phone: "", email: "", address: "" }
   });
 
-  useEffect(() => {
-    console.log('useEffect running, fetching content...');
-    const token = localStorage.getItem('token');
-    if (!token) {
-      navigate('/admin/login');
-      return;
-    }
-    
-    fetchContent();
-  }, [navigate]);
-
+  // Fetch initial content from the backend
   const fetchContent = async () => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      setError('');
-      console.log('Attempting to fetch content from backend...');
-      
-      // Check if we have a token
-      const token = localStorage.getItem('token');
-      console.log('Current token in localStorage:', token ? '*** (exists)' : 'NOT FOUND');
-      
-      // First try to get content from the backend
-      try {
-        console.log('Calling contentApi.getAll()...');
-        const response = await contentApi.getAll();
-        console.log('API Response received:', {
-          isArray: Array.isArray(response),
-          length: Array.isArray(response) ? response.length : 'N/A',
-          firstItem: Array.isArray(response) && response.length > 0 ? response[0] : 'N/A'
-        });
-        
-        if (Array.isArray(response)) {
-          console.log('Received valid content array, updating state...');
-          setContent(response as ContentItem[]);
-          setError('');
-          return;
-        } else {
-          console.warn('API response is not an array:', response);
-          throw new Error('Invalid response format from server');
+      const items = await contentApi.getAll() as Array<{ key: string; value: string }>;
+      const newUiContent = { ...uiContent };
+
+      const contentMap: { [key: string]: any } = {};
+      items.forEach(item => {
+        try {
+          contentMap[item.key] = JSON.parse(item.value);
+        } catch {
+          contentMap[item.key] = item.value;
         }
-      } catch (apiError: any) {
-        const errorDetails = {
-          message: apiError.message,
-          status: apiError.response?.status,
-          statusText: apiError.response?.statusText,
-          data: apiError.response?.data,
-          config: {
-            url: apiError.config?.url,
-            method: apiError.config?.method,
-            headers: {
-              ...apiError.config?.headers,
-              // Don't log the full auth header for security
-              Authorization: apiError.config?.headers?.Authorization 
-                ? '*** (exists)' 
-                : 'MISSING'
-            }
-          }
-        };
-        
-        console.error('API Error details:', errorDetails);
-        
-        // If unauthorized, redirect to login
-        if (apiError.response?.status === 401) {
-          console.log('Unauthorized - redirecting to login');
-          navigate('/admin/login');
-          return;
-        }
-        
-        console.log('Falling back to sample data');
-        
-        // Use the sample data from uiContent
-        const sampleContent: ContentItem[] = [
-          {
-            id: '1',
-            key: 'hero.title',
-            value: uiContent.hero[season].title,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: '2',
-            key: 'hero.subtitle',
-            value: uiContent.hero[season].subtitle,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: '3',
-            key: 'contact.phone',
-            value: uiContent.contact.phone,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: '4',
-            key: 'contact.email',
-            value: uiContent.contact.email,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          },
-          {
-            id: '5',
-            key: 'contact.address',
-            value: uiContent.contact.address,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          }
-        ];
-        
-        // Add service items to sample content
-        uiContent.services[season].forEach((service, index) => {
-          sampleContent.push({
-            id: `service-${season}-${index + 1}`,
-            key: `services.${season}.${index}.title`,
-            value: service.title,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          });
-          
-          sampleContent.push({
-            id: `service-${season}-${index + 1}-desc`,
-            key: `services.${season}.${index}.description`,
-            value: service.description,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          });
-          
-          sampleContent.push({
-            id: `service-${season}-${index + 1}-price`,
-            key: `services.${season}.${index}.price`,
-            value: service.price,
-            type: 'text',
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          });
-        });
-        
-        setContent(sampleContent);
-        setError('Using sample data - could not connect to backend');
+      });
+
+      newUiContent.hero.summer = contentMap['hero.summer'] || newUiContent.hero.summer;
+      newUiContent.hero.winter = contentMap['hero.winter'] || newUiContent.hero.winter;
+      newUiContent.services.summer = contentMap['services.summer'] || newUiContent.services.summer;
+      newUiContent.services.winter = contentMap['services.winter'] || newUiContent.services.winter;
+      newUiContent.portfolio.summer = contentMap['portfolio.summer'] || newUiContent.portfolio.summer;
+      newUiContent.portfolio.winter = contentMap['portfolio.winter'] || newUiContent.portfolio.winter;
+      newUiContent.testimonials = contentMap['testimonials'] || newUiContent.testimonials;
+      newUiContent.contact = contentMap['contact'] || newUiContent.contact;
+
+      setUiContent(newUiContent);
+    } catch (err: any) {
+      if (err.response?.status === 401) {
+        navigate('/admin/login');
+      } else {
+        setError('Failed to load content from the server.');
       }
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to load content';
-      setError(errorMessage);
-      setContent([]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  useEffect(() => {
+    fetchContent();
+  }, [navigate]);
+
   const handleSave = async () => {
+    setIsSaving(true);
+    setError('');
     try {
-      setIsSaving(true);
-      
-      // TODO: Implement save functionality with the API
-      // This is a placeholder for the actual API calls
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
+      // First, get the existing content to map keys to IDs
+      const existingContent = await contentApi.getAll() as Array<{ id: string; key: string; value: string }>;
+      const contentMap = new Map(existingContent.map(i => [i.key, i.id]));
+
+      const contentToSave = [
+        { key: 'hero.summer', value: JSON.stringify(uiContent.hero.summer) },
+        { key: 'hero.winter', value: JSON.stringify(uiContent.hero.winter) },
+        { key: 'services.summer', value: JSON.stringify(uiContent.services.summer) },
+        { key: 'services.winter', value: JSON.stringify(uiContent.services.winter) },
+        { key: 'portfolio.summer', value: JSON.stringify(uiContent.portfolio.summer) },
+        { key: 'portfolio.winter', value: JSON.stringify(uiContent.portfolio.winter) },
+        { key: 'testimonials', value: JSON.stringify(uiContent.testimonials) },
+        { key: 'contact', value: JSON.stringify(uiContent.contact) },
+      ];
+
+      for (const item of contentToSave) {
+        const id = contentMap.get(item.key) || item.key; // Fallback to key if ID not found
+        await contentApi.createOrUpdate(id, { ...item, type: 'json' });
+      }
+
       setHasUnsavedChanges(false);
-      // Show success message or notification
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Failed to save content';
-      setError(errorMessage);
+      alert('Changes saved successfully!');
+    } catch (err) { 
+      alert('Failed to save changes. Please try again.');
+      setError('Failed to save changes. Please try again.');
     } finally {
       setIsSaving(false);
     }
   };
+  
+  useEffect(() => {
+    setHeaderControls?.({ hasUnsavedChanges, onSave: handleSave });
+  }, [hasUnsavedChanges, uiContent]);
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    onLogout();
-    navigate('/admin/login');
+  // Generic handler to update nested state
+  const handleUiChange = (section: string, value: any) => {
+    setUiContent(prev => ({ ...prev, [section]: value }));
+    setHasUnsavedChanges(true);
   };
+
+  // CRUD Handlers for Portfolio
+  const addPortfolioItem = () => {
+    const newItem = { id: `p-${Date.now()}`, title: 'New Project', description: '', imageUrl: '', location: '', duration: '' };
+    const updatedPortfolio = { ...uiContent.portfolio, [season]: [...uiContent.portfolio[season], newItem] };
+    handleUiChange('portfolio', updatedPortfolio);
+  };
+  const updatePortfolioItem = (id: string, field: keyof PortfolioItem, value: string) => {
+    const updatedItems = uiContent.portfolio[season].map(p => p.id === id ? { ...p, [field]: value } : p);
+    const updatedPortfolio = { ...uiContent.portfolio, [season]: updatedItems };
+    handleUiChange('portfolio', updatedPortfolio);
+  };
+  const deletePortfolioItem = (id: string) => {
+    const updatedItems = uiContent.portfolio[season].filter(p => p.id !== id);
+    const updatedPortfolio = { ...uiContent.portfolio, [season]: updatedItems };
+    handleUiChange('portfolio', updatedPortfolio);
+  };
+
+  // CRUD Handlers for Services
+  const addService = () => {
+    const newItem = { id: `s-${Date.now()}`, title: 'New Service', description: 'Service description', price: '$0' };
+    const updatedServices = { ...uiContent.services, [season]: [...uiContent.services[season], newItem] };
+    handleUiChange('services', updatedServices);
+  };
+  const updateService = (id: string, field: keyof ServiceItem, value: string) => {
+    const updatedItems = uiContent.services[season].map(s => s.id === id ? { ...s, [field]: value } : s);
+    const updatedServices = { ...uiContent.services, [season]: updatedItems };
+    handleUiChange('services', updatedServices);
+  };
+  const deleteService = (id: string) => {
+    const updatedItems = uiContent.services[season].filter(s => s.id !== id);
+    const updatedServices = { ...uiContent.services, [season]: updatedItems };
+    handleUiChange('services', updatedServices);
+  };
+
+  // CRUD Handlers for Testimonials
+  const addTestimonial = () => {
+    const newItem = { id: `t-${Date.now()}`, name: 'New Customer', role: 'Customer', rating: 5, comment: '' };
+    handleUiChange('testimonials', [...uiContent.testimonials, newItem]);
+  };
+  const updateTestimonial = (id: string, field: keyof TestimonialItem, value: string | number) => {
+    const updatedItems = uiContent.testimonials.map(t => t.id === id ? { ...t, [field]: value } : t);
+    handleUiChange('testimonials', updatedItems);
+  };
+  const deleteTestimonial = (id: string) => {
+    const updatedItems = uiContent.testimonials.filter(t => t.id !== id);
+    handleUiChange('testimonials', updatedItems);
+  };
+
+  // Settings Handlers
+  const handleChangePassword = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const currentPassword = (form.elements.namedItem('current-password') as HTMLInputElement).value;
+    const newPassword = (form.elements.namedItem('new-password') as HTMLInputElement).value;
+    if (!currentPassword || !newPassword) {
+      alert('Please fill in both password fields.');
+      return;
+    }
+    try {
+      await authApi.changePassword(currentPassword, newPassword);
+      alert('Password changed successfully!');
+      form.reset();
+    } catch (error: any) {
+      alert(`Error: ${error.response?.data?.error || 'An error occurred.'}`);
+    }
+  };
+
+  const handleResetContent = async () => {
+    if (window.confirm('Are you sure? This will reset all content to its default state.')) {
+      try {
+        await contentApi.reset();
+        alert('Content has been reset. The page will now reload.');
+        window.location.reload();
+      } catch (error) {
+        alert('An error occurred while resetting content.');
+      }
+    }
+  };
+
+  if (isLoading) return <div className="flex items-center justify-center min-h-screen">Loading...</div>;
+  if (error) return <div className="p-8 text-red-500">{error}</div>;
 
   const SeasonIcon = season === 'summer' ? Sun : Snowflake;
 
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="p-8">
-        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded relative" role="alert">
-          <strong className="font-bold">Error: </strong>
-          <span className="block sm:inline">{error}</span>
-          <Button 
-            onClick={fetchContent}
-            className="mt-2"
-            variant="outline"
-            size="sm"
-          >
-            Retry
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <div className="min-h-screen bg-background">
-      {/* Top Navigation */}
-      <div className="border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                  <Edit3 className="w-5 h-5 text-primary-foreground" />
-                </div>
-                <div>
-                  <h1 className="text-xl tracking-tight">BladeSnow Pro Admin</h1>
-                  <p className="text-sm text-muted-foreground">Content Management System</p>
-                </div>
+    <div className="container mx-auto px-6 py-8">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
+        <TabsList>
+          <TabsTrigger value="hero"><FileText className="w-4 h-4 mr-2" />Hero</TabsTrigger>
+          <TabsTrigger value="services"><Briefcase className="w-4 h-4 mr-2" />Services</TabsTrigger>
+          <TabsTrigger value="portfolio"><ImageIcon className="w-4 h-4 mr-2" />Portfolio</TabsTrigger>
+          <TabsTrigger value="testimonials"><Users className="w-4 h-4 mr-2" />Reviews</TabsTrigger>
+          <TabsTrigger value="contact"><Phone className="w-4 h-4 mr-2" />Contact</TabsTrigger>
+          <TabsTrigger value="settings"><Settings className="w-4 h-4 mr-2" />Settings</TabsTrigger>
+        </TabsList>
+
+        {/* Hero Section */}
+        <TabsContent value="hero">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center"><SeasonIcon className="w-5 h-5 mr-2" />{season.charAt(0).toUpperCase() + season.slice(1)} Hero</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Title</Label>
+                <Input value={uiContent.hero[season].title} onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], title: e.target.value } })} />
               </div>
-              
-              {hasUnsavedChanges && (
-                <Badge variant="secondary" className="animate-pulse">
-                  Unsaved Changes
-                </Badge>
-              )}
-            </div>
-
-            <div className="flex items-center space-x-4">
-              {/* Season Toggle */}
-              <div className="flex items-center space-x-3 text-sm">
-                <Sun className={`h-4 w-4 transition-colors duration-300 ${season === 'summer' ? 'text-green-500' : 'text-muted-foreground'}`} />
-                <Switch 
-                  checked={season === 'winter'} 
-                  onCheckedChange={onSeasonToggle}
-                  className="data-[state=checked]:bg-blue-500"
-                />
-                <Snowflake className={`h-4 w-4 transition-colors duration-300 ${season === 'winter' ? 'text-blue-500' : 'text-muted-foreground'}`} />
+              <div>
+                <Label>Subtitle</Label>
+                <Textarea value={uiContent.hero[season].subtitle} onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], subtitle: e.target.value } })} />
               </div>
+              <div>
+                <Label>CTA Text</Label>
+                <Input value={uiContent.hero[season].ctaText} onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], ctaText: e.target.value } })} />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-              <Button variant="outline" onClick={onPreview}>
-                <Eye className="w-4 h-4 mr-2" />
-                Preview Site
-              </Button>
+        {/* Services Section */}
+        <TabsContent value="services">
+          <Card>
+            <CardHeader>
+              <CardTitle>Services</CardTitle>
+              <Button size="sm" onClick={addService}><Plus className="w-4 h-4 mr-2" />Add Service</Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {uiContent.services[season].map(service => (
+                <div key={service.id} className="border p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-medium">{service.title}</h4>
+                    <Button variant="ghost" size="sm" onClick={() => deleteService(service.id)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                  <Label>Title</Label>
+                  <Input value={service.title} onChange={e => updateService(service.id, 'title', e.target.value)} />
+                  <Label>Description</Label>
+                  <Input value={service.description} onChange={e => updateService(service.id, 'description', e.target.value)} />
+                  <Label>Price</Label>
+                  <Input value={service.price} onChange={e => updateService(service.id, 'price', e.target.value)} />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-              <Button 
-                onClick={handleSave} 
-                disabled={!hasUnsavedChanges || isSaving}
-                className="bg-green-600 hover:bg-green-700"
-              >
-                {isSaving ? (
-                  <>
-                    <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-4 h-4 mr-2" />
-                    Save Changes
-                  </>
-                )}
-              </Button>
+        {/* Portfolio Section */}
+        <TabsContent value="portfolio">
+          <Card>
+            <CardHeader>
+              <CardTitle>Portfolio</CardTitle>
+              <Button size="sm" onClick={addPortfolioItem}><Plus className="w-4 h-4 mr-2" />Add Project</Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {uiContent.portfolio[season].map(p => (
+                <div key={p.id} className="border p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-medium">{p.title}</h4>
+                    <Button variant="ghost" size="sm" onClick={() => deletePortfolioItem(p.id)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                  <Label>Title</Label>
+                  <Input value={p.title} onChange={e => updatePortfolioItem(p.id, 'title', e.target.value)} />
+                  <Label>Description</Label>
+                  <Input value={p.description} onChange={e => updatePortfolioItem(p.id, 'description', e.target.value)} />
+                  <Label>Location</Label>
+                  <Input value={p.location} onChange={e => updatePortfolioItem(p.id, 'location', e.target.value)} />
+                  <Label>Duration</Label>
+                  <Input value={p.duration} onChange={e => updatePortfolioItem(p.id, 'duration', e.target.value)} />
+                  <Label>Image URL</Label>
+                  <Input value={p.imageUrl} onChange={e => updatePortfolioItem(p.id, 'imageUrl', e.target.value)} />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-              <Button variant="outline" onClick={handleLogout}>
-                <LogOut className="w-4 h-4 mr-2" />
-                Logout
-              </Button>
-            </div>
+        {/* Testimonials Section */}
+        <TabsContent value="testimonials">
+          <Card>
+            <CardHeader>
+              <CardTitle>Testimonials</CardTitle>
+              <Button size="sm" onClick={addTestimonial}><Plus className="w-4 h-4 mr-2" />Add Testimonial</Button>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {uiContent.testimonials.map(t => (
+                <div key={t.id} className="border p-4 rounded-lg space-y-2">
+                  <div className="flex justify-between items-center">
+                    <h4 className="font-medium">{t.name}</h4>
+                    <Button variant="ghost" size="sm" onClick={() => deleteTestimonial(t.id)}><Trash2 className="w-4 h-4" /></Button>
+                  </div>
+                  <Label>Name</Label>
+                  <Input value={t.name} onChange={e => updateTestimonial(t.id, 'name', e.target.value)} />
+                  <Label>Role</Label>
+                  <Input value={t.role} onChange={e => updateTestimonial(t.id, 'role', e.target.value)} />
+                  <Label>Rating (1-5)</Label>
+                  <Input type="number" min={1} max={5} value={t.rating} onChange={e => updateTestimonial(t.id, 'rating', Number(e.target.value))} />
+                  <Label>Comment</Label>
+                  <Textarea value={t.comment} onChange={e => updateTestimonial(t.id, 'comment', e.target.value)} />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Contact Section */}
+        <TabsContent value="contact">
+          <Card>
+            <CardHeader><CardTitle>Contact Information</CardTitle></CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <Label>Phone</Label>
+                <Input value={uiContent.contact.phone} onChange={e => handleUiChange('contact', { ...uiContent.contact, phone: e.target.value })} />
+              </div>
+              <div>
+                <Label>Email</Label>
+                <Input type="email" value={uiContent.contact.email} onChange={e => handleUiChange('contact', { ...uiContent.contact, email: e.target.value })} />
+              </div>
+              <div>
+                <Label>Address</Label>
+                <Textarea value={uiContent.contact.address} onChange={e => handleUiChange('contact', { ...uiContent.contact, address: e.target.value })} />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Settings Section */}
+        <TabsContent value="settings">
+          <div className="grid gap-6">
+            <Card>
+              <CardHeader><CardTitle>General</CardTitle></CardHeader>
+              <CardContent>
+                <div className="flex items-center justify-between">
+                  <Label>Seasonal Mode</Label>
+                  <div className="flex items-center space-x-2">
+                    <Sun className="h-4 w-4" />
+                    <Switch checked={season === 'winter'} onCheckedChange={onSeasonToggle} />
+                    <Snowflake className="h-4 w-4" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>Security</CardTitle></CardHeader>
+              <CardContent>
+                <form onSubmit={handleChangePassword} className="space-y-4">
+                  <Label htmlFor="current-password">Current Password</Label>
+                  <Input id="current-password" type="password" />
+                  <Label htmlFor="new-password">New Password</Label>
+                  <Input id="new-password" type="password" />
+                  <Button type="submit"><KeyRound className="w-4 h-4 mr-2" />Change Password</Button>
+                </form>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader><CardTitle>Danger Zone</CardTitle></CardHeader>
+              <CardContent>
+                <Button variant="destructive" onClick={handleResetContent}><RefreshCw className="w-4 h-4 mr-2" />Reset All Content</Button>
+              </CardContent>
+            </Card>
           </div>
-        </div>
-      </div>
-
-      {/* Main Content */}
-      <div className="container mx-auto px-6 py-8">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col md:flex-row gap-6">
-          <TabsList className="flex flex-col h-auto p-2 bg-muted/50 rounded-lg w-full md:w-48 space-y-2">
-            <TabsTrigger value="hero" className="flex items-center space-x-2 justify-start w-full">
-              <FileText className="w-4 h-4" />
-              <span>Hero</span>
-            </TabsTrigger>
-            <TabsTrigger value="services" className="flex items-center space-x-2 justify-start w-full">
-              <Briefcase className="w-4 h-4" />
-              <span>Services</span>
-            </TabsTrigger>
-            <TabsTrigger value="portfolio" className="flex items-center space-x-2 justify-start w-full">
-              <ImageIcon className="w-4 h-4" />
-              <span>Portfolio</span>
-            </TabsTrigger>
-            <TabsTrigger value="testimonials" className="flex items-center space-x-2 justify-start w-full">
-              <Users className="w-4 h-4" />
-              <span>Reviews</span>
-            </TabsTrigger>
-            <TabsTrigger value="contact" className="flex items-center space-x-2 justify-start w-full">
-              <Phone className="w-4 h-4" />
-              <span>Contact</span>
-            </TabsTrigger>
-            <TabsTrigger value="settings" className="flex items-center space-x-2 justify-start w-full">
-              <Settings className="w-4 h-4" />
-              <span>Settings</span>
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Hero Section Editor */}
-          <TabsContent value="hero" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center space-x-2">
-                    <SeasonIcon className="w-5 h-5" />
-                    <span>{season === 'summer' ? 'Summer' : 'Winter'} Hero Section</span>
-                  </CardTitle>
-                  <CardDescription>
-                    Edit the main hero content for {season} season
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="hero-title">Main Title</Label>
-                      <Input
-                        id="hero-title"
-                        value={uiContent.hero[season].title}
-                        onChange={(e) => {
-                          setUiContent(prev => ({
-                            ...prev,
-                            hero: {
-                              ...prev.hero,
-                              [season]: {
-                                ...prev.hero[season],
-                                title: e.target.value
-                              }
-                            }
-                          }));
-                          setHasUnsavedChanges(true);
-                        }}
-                        className="text-lg"
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="hero-subtitle">Subtitle</Label>
-                      <Textarea
-                        id="hero-subtitle"
-                        value={uiContent.hero[season].subtitle}
-                        onChange={(e) => {
-                          setUiContent(prev => ({
-                            ...prev,
-                            hero: {
-                              ...prev.hero,
-                              [season]: {
-                                ...prev.hero[season],
-                                subtitle: e.target.value
-                              }
-                            }
-                          }));
-                          setHasUnsavedChanges(true);
-                        }}
-                        rows={3}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="hero-cta">Call to Action Button Text</Label>
-                      <Input
-                        id="hero-cta"
-                        value={uiContent.hero[season].ctaText}
-                        onChange={(e) => {
-                          setUiContent(prev => ({
-                            ...prev,
-                            hero: {
-                              ...prev.hero,
-                              [season]: {
-                                ...prev.hero[season],
-                                ctaText: e.target.value
-                              }
-                            }
-                          }));
-                          setHasUnsavedChanges(true);
-                        }}
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-
-          {/* Services Section Editor */}
-          <TabsContent value="services" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle className="flex items-center space-x-2">
-                        <SeasonIcon className="w-5 h-5" />
-                        <span>{season === 'summer' ? 'Summer' : 'Winter'} Services</span>
-                      </CardTitle>
-                      <CardDescription>
-                        Manage your service offerings for {season} season
-                      </CardDescription>
-                    </div>
-                    <Button size="sm">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Service
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {uiContent.services[season].map((service) => (
-                    <div key={service.id} className="border rounded-lg p-4 space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h4 className="font-medium">{service.title}</h4>
-                        <Button variant="ghost" size="sm">
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      <div className="grid md:grid-cols-3 gap-4">
-                        <div className="space-y-2">
-                          <Label>Service Title</Label>
-                          <Input 
-                            value={service.title} 
-                            onChange={(e) => {
-                              // Update service title logic
-                              setHasUnsavedChanges(true);
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Description</Label>
-                          <Input 
-                            value={service.description} 
-                            onChange={(e) => {
-                              // Update service description logic
-                              setHasUnsavedChanges(true);
-                            }}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Price</Label>
-                          <Input 
-                            value={service.price} 
-                            onChange={(e) => {
-                              // Update service price logic
-                              setHasUnsavedChanges(true);
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-
-          {/* Portfolio Section Editor */}
-          <TabsContent value="portfolio" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Portfolio Projects</CardTitle>
-                      <CardDescription>
-                        Manage your work showcase and project gallery
-                      </CardDescription>
-                    </div>
-                    <Button size="sm">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Project
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-12 text-muted-foreground">
-                    <ImageIcon className="w-12 h-12 mx-auto mb-4" />
-                    <p>Portfolio management interface coming soon...</p>
-                    <p className="text-sm">Upload images, add descriptions, and organize your work</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-
-          {/* Testimonials Section Editor */}
-          <TabsContent value="testimonials" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card>
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <CardTitle>Customer Reviews</CardTitle>
-                      <CardDescription>
-                        Manage testimonials and customer feedback
-                      </CardDescription>
-                    </div>
-                    <Button size="sm">
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add Review
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="text-center py-12 text-muted-foreground">
-                    <Star className="w-12 h-12 mx-auto mb-4" />
-                    <p>Testimonials management interface coming soon...</p>
-                    <p className="text-sm">Add customer reviews, ratings, and feedback</p>
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-
-          {/* Contact Section Editor */}
-          <TabsContent value="contact" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <Card>
-                <CardHeader>
-                  <CardTitle>Contact Information</CardTitle>
-                  <CardDescription>
-                    Update your business contact details
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid md:grid-cols-2 gap-6">
-                    <div className="space-y-2">
-                      <Label htmlFor="contact-phone">Phone Number</Label>
-                      <Input
-                        id="contact-phone"
-                        value={uiContent.contact.phone}
-                        onChange={(e) => {
-                          setUiContent(prev => ({
-                            ...prev,
-                            contact: {
-                              ...prev.contact,
-                              phone: e.target.value
-                            }
-                          }));
-                          setHasUnsavedChanges(true);
-                        }}
-                      />
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="contact-email">Email Address</Label>
-                      <Input
-                        id="contact-email"
-                        type="email"
-                        value={uiContent.contact.email}
-                        onChange={(e) => {
-                          setUiContent(prev => ({
-                            ...prev,
-                            contact: {
-                              ...prev.contact,
-                              email: e.target.value
-                            }
-                          }));
-                          setHasUnsavedChanges(true);
-                        }}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="contact-address">Business Address</Label>
-                    <Textarea
-                      id="contact-address"
-                      value={uiContent.contact.address}
-                      onChange={(e) => {
-                        setUiContent(prev => ({
-                          ...prev,
-                          contact: {
-                            ...prev.contact,
-                            address: e.target.value
-                          }
-                        }));
-                        setHasUnsavedChanges(true);
-                      }}
-                      rows={2}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          </TabsContent>
-
-          {/* Settings */}
-          <TabsContent value="settings" className="space-y-6">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.3 }}
-            >
-              <div className="grid gap-6">
-                <Card>
-                  <CardHeader>
-                    <CardTitle>General Settings</CardTitle>
-                    <CardDescription>
-                      Configure your website preferences
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Seasonal Mode</p>
-                        <p className="text-sm text-muted-foreground">Toggle between summer and winter themes</p>
-                      </div>
-                      <div className="flex items-center space-x-3">
-                        <Sun className="h-4 w-4 text-green-500" />
-                        <Switch checked={season === 'winter'} onCheckedChange={onSeasonToggle} />
-                        <Snowflake className="h-4 w-4 text-blue-500" />
-                      </div>
-                    </div>
-                    
-                    <Separator />
-                    
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="font-medium">Auto-save</p>
-                        <p className="text-sm text-muted-foreground">Automatically save changes as you type</p>
-                      </div>
-                      <Switch defaultChecked />
-                    </div>
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Account</CardTitle>
-                    <CardDescription>
-                      Manage your admin account settings
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <Button variant="outline" className="w-full">
-                      Change Password
-                    </Button>
-                    <Button variant="destructive" className="w-full">
-                      Reset All Content
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-            </motion.div>
-          </TabsContent>
-        </Tabs>
-      </div>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };

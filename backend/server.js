@@ -8,6 +8,8 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import bodyParser from 'body-parser';
+import { initialContent } from './seedData.js';
+import { sendContactEmail } from './email.js';
 
 // Configure dotenv
 dotenv.config();
@@ -80,8 +82,42 @@ async function initializeDatabase() {
   }
 }
 
-// Initialize the database when the server starts
-initializeDatabase().catch(console.error);
+// Seed the database with initial content if it's empty
+async function seedDatabase() {
+  try {
+    const count = await db.get('SELECT COUNT(*) as count FROM content');
+    if (count.count === 0) {
+      console.log('Content table is empty, seeding initial data...');
+      
+      // Seed testimonials
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['testimonials', JSON.stringify(initialContent.testimonials), 'json']
+      );
+
+      // Seed summer portfolio
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['portfolio.summer', JSON.stringify(initialContent.portfolio.summer), 'json']
+      );
+
+      // Seed winter portfolio
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['portfolio.winter', JSON.stringify(initialContent.portfolio.winter), 'json']
+      );
+
+      console.log('Database seeded successfully.');
+    }
+  } catch (err) {
+    console.error('Error seeding database:', err);
+  }
+}
+
+// Initialize and seed the database when the server starts
+initializeDatabase()
+  .then(() => seedDatabase())
+  .catch(console.error);
 
 // Auth middleware
 const authenticateToken = (req, res, next) => {
@@ -185,6 +221,41 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (error) {
     console.error('Registration error:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    const userId = req.user.id;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new passwords are required' });
+    }
+
+    // Get user from DB
+    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Check current password
+    const isMatch = await bcrypt.compare(currentPassword, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid current password' });
+    }
+
+    // Hash new password
+    const hashedNewPassword = await bcrypt.hash(newPassword, 10);
+
+    // Update password in DB
+    await db.run('UPDATE users SET password = ? WHERE id = ?', [hashedNewPassword, userId]);
+
+    res.status(200).json({ message: 'Password updated successfully' });
+
+  } catch (error) {
+    console.error('Change password error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -304,6 +375,23 @@ app.put('/api/content/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Reset all content
+app.post('/api/content/reset', authenticateToken, async (req, res) => {
+  try {
+    // Clear the content table
+    await db.run('DELETE FROM content');
+    console.log('Content table cleared.');
+
+    // Re-seed the database
+    await seedDatabase();
+
+    res.status(200).json({ message: 'Content has been reset successfully.' });
+  } catch (error) {
+    console.error('Error resetting content:', error);
+    res.status(500).json({ error: 'Failed to reset content' });
+  }
+});
+
 // Delete content
 app.delete('/api/content/:id', authenticateToken, async (req, res) => {
   try {
@@ -321,7 +409,28 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
 });
 
+// Contact form endpoint
+app.post('/api/contact', async (req, res) => {
+  try {
+    const { name, email, phone, service, message } = req.body;
+
+    // Basic validation
+    if (!name || !email || !service || !message) {
+      return res.status(400).json({ error: 'Please fill out all required fields.' });
+    }
+
+    // Send the email
+    await sendContactEmail({ name, email, phone, service, message });
+
+    res.status(200).json({ message: 'Your quote request has been sent successfully!' });
+
+  } catch (error) {
+    console.error('Contact form error:', error);
+    res.status(500).json({ error: 'There was an error sending your message. Please try again later.' });
+  }
+});
+
 // Start server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server is running on http://localhost:${PORT}`);
 });

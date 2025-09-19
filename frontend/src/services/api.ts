@@ -49,6 +49,10 @@ export const authApi = {
   getProfile: async () => {
     const response = await api.get('/auth/me');
     return response.data;
+  },
+  changePassword: async (currentPassword: string, newPassword: string) => {
+    const response = await api.post('/auth/change-password', { currentPassword, newPassword });
+    return response.data;
   }
 };
 
@@ -69,6 +73,9 @@ export const contentApi = {
   delete: async (id: string) => {
     await api.delete(`/content/${id}`);
   },
+  reset: async () => {
+    await api.post('/content/reset');
+  }
 };
 
 export default api;

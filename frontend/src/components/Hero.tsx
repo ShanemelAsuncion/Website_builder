@@ -1,26 +1,74 @@
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { ArrowRight, Play } from "lucide-react";
 import { motion } from "motion/react";
+import { contentApi } from "../services/api";
 
 interface HeroProps {
   season: 'summer' | 'winter';
 }
 
+interface HeroContent {
+  title: string;
+  subtitle: string;
+  ctaText?: string;
+  image: string;
+  gradient: string;
+}
+
 export function Hero({ season }: HeroProps) {
-  const summerContent = {
+  const [summerContent, setSummerContent] = useState<HeroContent>({
     title: "Transform Your Outdoor Space",
     subtitle: "Professional lawn care that brings your property to life",
     image: "https://images.unsplash.com/photo-1746458258536-b9ee5db20a73?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBob3VzZSUyMGV4dGVyaW9yJTIwbGFuZHNjYXBpbmd8ZW58MXx8fHwxNzU4MjIxMjA0fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
     gradient: "from-green-600/80 to-emerald-700/80"
-  };
+  });
 
-  const winterContent = {
+  const [winterContent, setWinterContent] = useState<HeroContent>({
     title: "Clear Paths, Safe Spaces",
     subtitle: "Reliable snow removal when you need it most",
     image: "https://images.unsplash.com/photo-1709668741587-cd18a016493c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHx3aW50ZXIlMjBzbm93JTIwaG91c2UlMjBkcml2ZXdheXxlbnwxfHx8fDE3NTgyMjEyMDR8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
     gradient: "from-blue-600/80 to-slate-700/80"
-  };
+  });
+
+  useEffect(() => {
+    const fetchContent = async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const sItem = items.find(i => i.key === 'hero.summer');
+        const wItem = items.find(i => i.key === 'hero.winter');
+        if (sItem?.value) setSummerContent(prev => ({ ...prev, ...JSON.parse(sItem.value) }));
+        if (wItem?.value) setWinterContent(prev => ({ ...prev, ...JSON.parse(wItem.value) }));
+      } catch {}
+    };
+    fetchContent();
+
+    const handleUpdate = () => {
+      try {
+        const sCached = localStorage.getItem('cache:hero.summer');
+        const wCached = localStorage.getItem('cache:hero.winter');
+        if (sCached) setSummerContent(prev => ({ ...prev, ...JSON.parse(sCached) }));
+        if (wCached) setWinterContent(prev => ({ ...prev, ...JSON.parse(wCached) }));
+      } catch {}
+    };
+
+    const onContentUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.section === 'hero' || ce.detail?.persisted) handleUpdate();
+    };
+    const onStorageUpdate = (e: StorageEvent) => {
+      if (e.key === 'cache:hero.summer' || e.key === 'cache:hero.winter') handleUpdate();
+    };
+
+    window.addEventListener('content-updated', onContentUpdated);
+    window.addEventListener('storage', onStorageUpdate);
+
+    return () => {
+      window.removeEventListener('content-updated', onContentUpdated);
+      window.removeEventListener('storage', onStorageUpdate);
+    };
+  }, []);
 
   const content = season === 'summer' ? summerContent : winterContent;
 
@@ -64,7 +112,7 @@ export function Hero({ season }: HeroProps) {
 
             <div className="flex flex-col sm:flex-row gap-4">
               <Button size="lg" className="group bg-white text-primary hover:bg-white/90 text-lg px-8 py-6">
-                Start Your Project
+                {content.ctaText || 'Start Your Project'}
                 <ArrowRight className="ml-2 h-5 w-5 group-hover:translate-x-1 transition-transform" />
               </Button>
               <Button size="lg" variant="outline" className="text-lg px-8 py-6 border-white/30 text-white hover:bg-white/10">

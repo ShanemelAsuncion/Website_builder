@@ -1,95 +1,96 @@
+import { useEffect, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
-import { Calendar, MapPin, ArrowRight, ExternalLink, Star } from "lucide-react";
+import { Calendar, MapPin, ArrowRight, ExternalLink, Star, Clock } from "lucide-react";
 import { motion } from "motion/react";
+import { contentApi } from "../services/api";
 
 interface WorkProps {
   season: 'summer' | 'winter';
 }
 
-const summerProjects = [
-  {
-    title: "Modern Estate Transformation",
-    location: "Westfield Heights",
-    date: "Summer 2024",
-    image: "https://images.unsplash.com/photo-1622015663084-307d19eabbbf?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxsdXh1cnklMjBob21lJTIwbGFuZHNjYXBpbmd8ZW58MXx8fHwxNzU4MjI3MjM3fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "Complete landscape redesign featuring native plantings, water features, and sustainable hardscaping for a 2-acre estate.",
-    category: "Luxury Design",
-    duration: "6 weeks",
-    featured: true
-  },
-  {
-    title: "Garden Sanctuary Design",
-    location: "Downtown District",
-    date: "Spring 2024", 
-    image: "https://images.unsplash.com/photo-1677275968967-7d1506282323?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBsYW5kc2NhcGluZyUyMGdhcmRlbiUyMGRlc2lnbnxlbnwxfHx8fDE3NTgyMjExNTl8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "Urban oasis creation with vertical gardens, sustainable irrigation, and year-round blooming schedule.",
-    category: "Garden Design",
-    duration: "4 weeks"
-  },
-  {
-    title: "Modern Patio & Pergola",
-    location: "Riverside Community",
-    date: "Summer 2024",
-    image: "https://images.unsplash.com/photo-1696100873900-a870b5d29e19?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBnYXJkZW4lMjBkZXNpZ24lMjBwYXRpb3xlbnwxfHx8fDE3NTgyMjcyNDN8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "Contemporary outdoor living space with custom pergola, integrated lighting, and low-maintenance landscaping.",
-    category: "Hardscaping",
-    duration: "3 weeks"
-  },
-  {
-    title: "Lawn Revitalization Project",
-    location: "North Hills",
-    date: "Summer 2024",
-    image: "https://images.unsplash.com/photo-1756428785435-c3a6b74147d7?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxiZWZvcmUlMjBhZnRlciUyMGxhd24lMjB0cmFuc2Zvcm1hdGlvbnxlbnwxfHx8fDE3NTgyMjcyMjd8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "Complete lawn renovation including soil amendment, new sod installation, and automated irrigation system.",
-    category: "Lawn Care",
-    duration: "2 weeks"
-  }
-];
+interface Project {
+  id: string;
+  title: string;
+  description: string;
+  imageUrl: string;
+  location: string;
+  duration: string;
+  category: string;
+  featured?: boolean;
+}
 
-const winterProjects = [
-  {
-    title: "Commercial Snow Management",
-    location: "Business Park Complex",
-    date: "Winter 2023-24",
-    image: "https://images.unsplash.com/photo-1679965101443-72ba40f7dec8?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxjb21tZXJjaWFsJTIwcHJvcGVydHklMjB3aW50ZXIlMjBtYWludGVuYW5jZXxlbnwxfHx8fDE3NTgyMjcyMzJ8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "24/7 snow removal and ice management for 50+ commercial properties ensuring zero downtime during winter storms.",
-    category: "Commercial",
-    duration: "Seasonal",
-    featured: true
-  },
-  {
-    title: "Residential Driveway Clearing",
-    location: "Suburban Districts",
-    date: "Winter 2023-24",
-    image: "https://images.unsplash.com/photo-1674049406206-83d38bd15c8a?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzbm93JTIwcGxvdyUyMGNsZWFyaW5nJTIwZHJpdmV3YXl8ZW58MXx8fHwxNzU4MjI3MjQwfDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "Emergency response snow clearing for residential customers with 2-hour guarantee during storm events.",
-    category: "Emergency Service",
-    duration: "On-demand"
-  },
-  {
-    title: "HOA Winter Maintenance",
-    location: "Mountain View Community",
-    date: "Winter 2023-24",
-    image: "https://images.unsplash.com/photo-1595391595283-5f057807d054?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzbm93JTIwcGxvdyUyMHRydWNrJTIwd2ludGVyfGVufDF8fHx8MTc1ODIyMTIwNXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "Comprehensive winter maintenance program for 200-unit community including sidewalks, parking, and common areas.",
-    category: "HOA Contract",
-    duration: "Seasonal"
-  },
-  {
-    title: "Ice Management Systems",
-    location: "Downtown Core",
-    date: "Winter 2023-24",
-    image: "https://images.unsplash.com/photo-1709668741587-cd18a016493c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHx3aW50ZXIlMjBzbm93JTIwaG91c2UlMjBkcml2ZXdheXxlbnwxfHx8fDE3NTgyMjEyMDR8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral",
-    description: "Proactive ice prevention and treatment for high-traffic commercial walkways and entrance areas.",
-    category: "Ice Management",
-    duration: "Ongoing"
-  }
-];
 
 export function Work({ season }: WorkProps) {
-  const projects = season === 'summer' ? summerProjects : winterProjects;
+  const [summerData, setSummerData] = useState<Project[]>([]);
+  const [winterData, setWinterData] = useState<Project[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>; 
+        const sItem = items.find(i => i.key === 'portfolio.summer');
+        const wItem = items.find(i => i.key === 'portfolio.winter');
+        if (sItem?.value) {
+          const parsed = JSON.parse(sItem.value) as Array<Project>;
+          setSummerData(parsed);
+        }
+        if (wItem?.value) {
+          const parsed = JSON.parse(wItem.value) as Array<Project>;
+          setWinterData(parsed);
+        }
+      } catch (e) {
+        // Keep fallbacks
+      }
+    })();
+    // Function to update state from localStorage cache
+    const handleUpdateFromCache = () => {
+      try {
+        const cachedSummer = localStorage.getItem('cache:portfolio.summer');
+        const cachedWinter = localStorage.getItem('cache:portfolio.winter');
+        if (cachedSummer) {
+          const items = JSON.parse(cachedSummer) as Array<Project>;
+          setSummerData(items);
+        }
+        if (cachedWinter) {
+          const items = JSON.parse(cachedWinter) as Array<Project>;
+          setWinterData(items);
+        }
+      } catch {}
+    };
+
+    // Live updates from admin dashboard (same tab)
+    const onContentUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.section === 'portfolio' || ce.detail?.persisted) {
+        handleUpdateFromCache();
+      }
+    };
+
+    // Live updates from admin dashboard (cross-tab)
+    const onStorageUpdate = (e: StorageEvent) => {
+      if (e.key === 'cache:portfolio.summer' || e.key === 'cache:portfolio.winter') {
+        handleUpdateFromCache();
+      }
+    };
+
+    window.addEventListener('content-updated', onContentUpdated);
+    window.addEventListener('storage', onStorageUpdate);
+
+    return () => {
+      window.removeEventListener('content-updated', onContentUpdated);
+      window.removeEventListener('storage', onStorageUpdate);
+    };
+  }, []);
+
+  const projects = season === 'summer' ? summerData : winterData;
+
+  if (projects.length === 0) {
+    // Render a loading state or nothing while data is being fetched
+    return null;
+  }
+
   const featuredProject = projects.find(p => p.featured) || projects[0];
   const otherProjects = projects.filter(p => !p.featured);
 
@@ -126,10 +127,10 @@ export function Work({ season }: WorkProps) {
           <div className="bg-background rounded-3xl overflow-hidden border shadow-xl">
             <div className="grid lg:grid-cols-2 gap-0">
               <div className="relative h-80 lg:h-auto overflow-hidden">
-                <ImageWithFallback
-                  src={featuredProject.image}
-                  alt={featuredProject.title}
-                  className="w-full h-full object-cover"
+                <ImageWithFallback 
+                  src={featuredProject.imageUrl} 
+                  alt={featuredProject.title} 
+                  className="w-full h-full object-cover rounded-3xl"
                 />
                 <div className="absolute inset-0 bg-gradient-to-tr from-black/50 via-transparent to-transparent"></div>
                 <div className="absolute top-6 left-6">
@@ -163,7 +164,7 @@ export function Work({ season }: WorkProps) {
                     </div>
                   </div>
                   <div className="flex items-center space-x-3">
-                    <Calendar className="h-5 w-5 text-primary" />
+                    <Clock className="h-5 w-5 text-primary" />
                     <div>
                       <div className="text-sm text-muted-foreground">Duration</div>
                       <div className="font-medium">{featuredProject.duration}</div>
@@ -191,10 +192,10 @@ export function Work({ season }: WorkProps) {
               className="group relative overflow-hidden rounded-2xl bg-background border hover:shadow-xl transition-all duration-500"
             >
               <div className="relative h-64 overflow-hidden">
-                <ImageWithFallback
-                  src={project.image}
-                  alt={project.title}
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
+                <ImageWithFallback 
+                  src={project.imageUrl} 
+                  alt={project.title} 
+                  className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
                 <div className="absolute top-4 left-4">
@@ -224,8 +225,8 @@ export function Work({ season }: WorkProps) {
                     <span>{project.location}</span>
                   </div>
                   <div className="flex items-center space-x-1">
-                    <Calendar className="h-3 w-3" />
-                    <span>{project.date}</span>
+                    <Clock className="h-3 w-3" />
+                    <span>{project.duration}</span>
                   </div>
                 </div>
               </div>

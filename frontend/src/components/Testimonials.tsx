@@ -1,68 +1,112 @@
+import { useEffect, useState } from "react";
 import { Badge } from "./ui/badge";
 import { Avatar, AvatarFallback } from "./ui/avatar";
 import { Star, Quote } from "lucide-react";
 import { motion } from "motion/react";
+import { contentApi } from "../services/api";
 
 interface TestimonialsProps {
   season: 'summer' | 'winter';
 }
 
-const summerTestimonials = [
-  {
-    name: "Sarah Johnson",
-    role: "Homeowner",
-    initials: "SJ",
-    rating: 5,
-    text: "ProSeason transformed our backyard into something out of a magazine. The weekly maintenance keeps everything looking perfect, and their attention to detail is incredible.",
-    highlight: "Transformed our backyard"
-  },
-  {
-    name: "Marcus Williams",
-    role: "Property Manager",
-    initials: "MW",
-    rating: 5,
-    text: "Managing 12 commercial properties, I need reliable service. ProSeason's landscaping team consistently delivers professional results that impress our tenants.",
-    highlight: "Consistently professional"
-  },
-  {
-    name: "Jennifer Chen",
-    role: "Garden Enthusiast",
-    initials: "JC",
-    rating: 5,
-    text: "Their plant selection expertise saved my struggling garden. Now it's the neighborhood showcase, and I've learned so much from their team.",
-    highlight: "Neighborhood showcase"
-  }
-];
+interface Testimonial {
+  name: string;
+  role: string;
+  initials: string;
+  rating: number;
+  text: string;
+  highlight: string;
+}
 
-const winterTestimonials = [
-  {
-    name: "David Rodriguez",
-    role: "Business Owner",
-    initials: "DR",
-    rating: 5,
-    text: "During the last blizzard, they had our parking lot cleared by 5 AM. Our customers could shop safely, and we didn't lose a day of business.",
-    highlight: "Never lost a day"
-  },
-  {
-    name: "Lisa Thompson",
-    role: "Senior Community",
-    initials: "LT",
-    rating: 5,
-    text: "Safety is our top priority. ProSeason's ice management keeps our walkways safe for residents, and their emergency response is outstanding.",
-    highlight: "Outstanding response"
-  },
-  {
-    name: "Robert Kim",
-    role: "Facility Director",
-    initials: "RK",
-    rating: 5,
-    text: "Three years of winter contracts, and they've never let us down. Professional, reliable, and their equipment is always well-maintained.",
-    highlight: "Never let us down"
-  }
-];
 
 export function Testimonials({ season }: TestimonialsProps) {
-  const testimonials = season === 'summer' ? summerTestimonials : winterTestimonials;
+  const [testimonials, setTestimonials] = useState<Testimonial[]>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>; 
+        const tItem = items.find((i) => i.key === 'testimonials');
+        if (tItem?.value) {
+          const parsed = JSON.parse(tItem.value) as Array<{
+            id?: string;
+            name: string;
+            role: string;
+            rating: number;
+            comment: string;
+          }>;
+          // Map admin schema to UI schema
+          const mapped = parsed.map((t) => {
+            const initials = t.name
+              ? t.name
+                  .split(' ')
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((s) => s[0]?.toUpperCase())
+                  .join('')
+              : 'CU';
+            return {
+              name: t.name || 'Customer',
+              role: t.role || 'Customer',
+              initials,
+              rating: Math.max(1, Math.min(5, Number(t.rating) || 5)),
+              text: t.comment || '',
+              highlight: 'Verified feedback'
+            };
+          });
+          setTestimonials(mapped);
+        }
+      } catch (e) {
+        // On error, show an empty list
+        setTestimonials([]);
+      }
+    })();
+
+    // Function to update state from localStorage cache
+    const handleUpdateFromCache = () => {
+      try {
+        const cached = localStorage.getItem('cache:testimonials');
+        if (cached) {
+          const parsed = JSON.parse(cached) as Array<{ name: string; role: string; rating: number; comment: string }>;
+          const mapped = parsed.map((t) => {
+            const initials = t.name ? t.name.split(' ').filter(Boolean).slice(0, 2).map(s => s[0]?.toUpperCase()).join('') : 'CU';
+            return {
+              name: t.name || 'Customer',
+              role: t.role || 'Customer',
+              initials,
+              rating: Math.max(1, Math.min(5, Number(t.rating) || 5)),
+              text: t.comment || '',
+              highlight: 'Verified feedback'
+            };
+          });
+          setTestimonials(mapped);
+        }
+      } catch {}
+    };
+
+    // Live updates from admin dashboard (same tab)
+    const onContentUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.section === 'testimonials' || ce.detail?.persisted) {
+        handleUpdateFromCache();
+      }
+    };
+
+    // Live updates from admin dashboard (cross-tab)
+    const onStorageUpdate = (e: StorageEvent) => {
+      if (e.key === 'cache:testimonials') {
+        handleUpdateFromCache();
+      }
+    };
+
+    window.addEventListener('content-updated', onContentUpdated);
+    window.addEventListener('storage', onStorageUpdate);
+
+    return () => {
+      window.removeEventListener('content-updated', onContentUpdated);
+      window.removeEventListener('storage', onStorageUpdate);
+    };
+  }, [season]);
 
   return (
     <section id="testimonials" className="py-24 bg-gradient-to-br from-muted/30 to-muted/10">
