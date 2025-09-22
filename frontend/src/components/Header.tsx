@@ -83,7 +83,7 @@ export function Header({ season, onSeasonToggle }: HeaderProps) {
               <span>{phone}</span>
             </div>
             
-            <Button onClick={scrollToContact} className="hidden md:block bg-primary hover:bg-primary/90">
+            <Button onClick={scrollToContact} className="hidden md:block bg-primary hover:bg-primary/90 btn-quote">
               Get Quote
             </Button>
             

@@ -25,6 +25,7 @@ interface Project {
 export function Work({ season }: WorkProps) {
   const [summerData, setSummerData] = useState<Project[]>([]);
   const [winterData, setWinterData] = useState<Project[]>([]);
+  const [facebookUrl, setFacebookUrl] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     (async () => {
@@ -32,6 +33,7 @@ export function Work({ season }: WorkProps) {
         const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>; 
         const sItem = items.find(i => i.key === 'portfolio.summer');
         const wItem = items.find(i => i.key === 'portfolio.winter');
+        const cItem = items.find(i => i.key === 'contact');
         if (sItem?.value) {
           const parsed = JSON.parse(sItem.value) as Array<Project>;
           setSummerData(parsed);
@@ -39,6 +41,13 @@ export function Work({ season }: WorkProps) {
         if (wItem?.value) {
           const parsed = JSON.parse(wItem.value) as Array<Project>;
           setWinterData(parsed);
+        }
+        if (cItem?.value) {
+          try {
+            const parsed = JSON.parse(cItem.value) as { facebook?: string; facebookUrl?: string };
+            const raw = parsed.facebookUrl || parsed.facebook;
+            if (raw) setFacebookUrl(raw.startsWith('http') ? raw : `https://facebook.com/${raw}`);
+          } catch {}
         }
       } catch (e) {
         // Keep fallbacks
@@ -245,22 +254,20 @@ export function Work({ season }: WorkProps) {
           transition={{ duration: 0.6, delay: 0.4 }}
           className="text-center bg-primary rounded-3xl p-12 text-primary-foreground"
         >
-          <h3 className="text-3xl mb-4 tracking-tight">Ready to Start Your Project?</h3>
+          <h3 className="text-3xl mb-4 tracking-tight">Want to view more of our work?</h3>
           <p className="text-primary-foreground/80 mb-8 text-lg max-w-2xl mx-auto">
-            {season === 'summer' 
-              ? 'Transform your outdoor space into the landscape of your dreams. Every project is unique, and we bring the same attention to detail to properties of all sizes.'
-              : 'Ensure your property stays safe and accessible all winter long. From residential driveways to commercial complexes, we have the expertise and equipment to handle any challenge.'
-            }
+            Explore more recent projects and updates on our Facebook page.
           </p>
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
-              View Full Portfolio
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
-            <Button size="lg" className="bg-primary-foreground text-primary hover:bg-primary-foreground/90">
-              Schedule Consultation
-            </Button>
-          </div>
+          {facebookUrl && (
+            <div className="flex justify-center">
+              <a href={facebookUrl} target="_blank" rel="noopener noreferrer">
+                <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
+                  View more on Facebook
+                  <ExternalLink className="ml-2 h-4 w-4" />
+                </Button>
+              </a>
+            </div>
+          )}
         </motion.div>
       </div>
     </section>

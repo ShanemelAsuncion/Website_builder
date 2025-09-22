@@ -486,6 +486,15 @@ export const Dashboard = () => {
           </div>
         </TabsContent>
       </Tabs>
+      {hasUnsavedChanges && (
+        <Button
+          className="floating-save-btn"
+          onClick={handleSave}
+          disabled={isSaving}
+        >
+          {isSaving ? 'Saving…' : 'Save Changes'}
+        </Button>
+      )}
     </div>
   );
 };

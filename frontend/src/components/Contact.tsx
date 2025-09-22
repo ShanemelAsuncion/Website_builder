@@ -164,7 +164,12 @@ export function Contact({ season }: ContactProps) {
                         ? (rawUrl.startsWith('http') ? rawUrl : `https://facebook.com/${rawUrl}`)
                         : undefined;
                       return url ? (
-                        <a href={url} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+                        <a
+                          href={url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`font-medium contact-fb-link ${season}`}
+                        >
                           {name}
                         </a>
                       ) : (

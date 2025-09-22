@@ -54,6 +54,47 @@
       --tw-scale-y: 1;
       --tw-scale-z: 1;
     }
+
+  /* --- Tabs active state styles --- */
+  [data-slot="tabs-trigger"][data-state="active"] {
+    background-color: var(--card);
+    border-color: var(--input);
+    color: var(--foreground);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  .dark [data-slot="tabs-trigger"][data-state="active"] {
+    background-color: color-mix(in oklab, var(--input) 30%, transparent);
+    color: var(--foreground);
+  }
+
+  /* --- Facebook link seasonal colors --- */
+  .contact-fb-link.summer { color: var(--color-green-600); }
+  .contact-fb-link.winter { color: var(--color-blue-600); }
+  .contact-fb-link:hover { text-decoration: none; opacity: 0.9; }
+
+  /* --- Floating Save button --- */
+  .floating-save-btn {
+    position: fixed;
+    right: 1.25rem; /* 20px */
+    bottom: 1.25rem;
+    z-index: 50;
+  }
+
+  /* --- Header Get Quote button animations --- */
+  .btn-quote {
+    transition-property: transform, box-shadow, background-color, color;
+    transition-duration: 200ms;
+    transition-timing-function: var(--default-transition-timing-function);
+    box-shadow: 0 10px 20px rgba(0,0,0,0.08);
+  }
+  .btn-quote:hover {
+    transform: translateY(-1px) scale(1.02);
+    box-shadow: 0 14px 24px rgba(0,0,0,0.12);
+  }
+  .btn-quote:active {
+    transform: translateY(0);
+    box-shadow: 0 6px 14px rgba(0,0,0,0.10);
+  }
   }
 }
 
