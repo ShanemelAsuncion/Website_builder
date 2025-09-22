@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { Menu, Phone, Leaf, Snowflake } from "lucide-react";
+import { contentApi } from "../services/api";
 
 interface HeaderProps {
   season: 'summer' | 'winter';
@@ -8,6 +10,23 @@ interface HeaderProps {
 }
 
 export function Header({ season, onSeasonToggle }: HeaderProps) {
+  const scrollToContact = () => {
+    const el = document.getElementById('contact');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+  const [phone, setPhone] = useState<string>("(555) 123-4567");
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const cItem = items.find(i => i.key === 'contact');
+        if (cItem?.value) {
+          const parsed = JSON.parse(cItem.value) as { phone?: string };
+          if (parsed.phone) setPhone(parsed.phone);
+        }
+      } catch {}
+    })();
+  }, []);
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-background/80 backdrop-blur-xl border-b">
       <div className="container mx-auto px-6 py-6">
@@ -26,6 +45,10 @@ export function Header({ season, onSeasonToggle }: HeaderProps) {
           <nav className="hidden lg:flex items-center space-x-12">
             <a href="#services" className="relative group">
               <span className="hover:text-primary transition-colors duration-300">Services</span>
+              <div className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary transition-all duration-300 group-hover:w-full"></div>
+            </a>
+            <a href="#work" className="relative group">
+              <span className="hover:text-primary transition-colors duration-300">Portfolio</span>
               <div className="absolute -bottom-1 left-0 w-0 h-0.5 bg-primary transition-all duration-300 group-hover:w-full"></div>
             </a>
             <a href="#process" className="relative group">
@@ -57,10 +80,10 @@ export function Header({ season, onSeasonToggle }: HeaderProps) {
             
             <div className="hidden sm:flex items-center space-x-2 text-sm">
               <Phone className="h-4 w-4 text-primary" />
-              <span>(555) 123-4567</span>
+              <span>{phone}</span>
             </div>
             
-            <Button className="hidden md:block bg-primary hover:bg-primary/90">
+            <Button onClick={scrollToContact} className="hidden md:block bg-primary hover:bg-primary/90">
               Get Quote
             </Button>
             

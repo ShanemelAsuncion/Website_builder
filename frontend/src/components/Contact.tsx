@@ -5,7 +5,7 @@ import { Input } from "./ui/input";
 import { Label } from "./ui/label";
 import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
-import { Phone, Mail, MapPin, Clock, Send, CheckCircle, Loader2 } from "lucide-react";
+import { Phone, Mail, MapPin, Clock, Send, CheckCircle, Loader2, Facebook } from "lucide-react";
 import { motion } from "motion/react";
 import axios from 'axios';
 import { contentApi } from "../services/api";
@@ -25,10 +25,12 @@ export function Contact({ season }: ContactProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [responseMsg, setResponseMsg] = useState('');
 
-  const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string }>({
+  const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string; facebook?: string; facebookName?: string; facebookUrl?: string }>({
     phone: '(555) 123-4567',
     email: 'info@proseason.com',
     address: 'Greater Metro Area',
+    facebookName: undefined,
+    facebookUrl: undefined,
   });
 
   useEffect(() => {
@@ -37,13 +39,16 @@ export function Contact({ season }: ContactProps) {
         const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
         const cItem = items.find(i => i.key === 'contact');
         if (cItem?.value) {
-          const parsed = JSON.parse(cItem.value) as { phone?: string; email?: string; address?: string; hours?: string; weekendNote?: string };
+          const parsed = JSON.parse(cItem.value) as { phone?: string; email?: string; address?: string; hours?: string; weekendNote?: string; facebook?: string; facebookName?: string; facebookUrl?: string };
           setContactInfo(prev => ({
             phone: parsed.phone || prev.phone,
             email: parsed.email || prev.email,
             address: parsed.address || prev.address,
             hours: parsed.hours || prev.hours,
             weekendNote: parsed.weekendNote || prev.weekendNote,
+            facebook: parsed.facebook || prev.facebook,
+            facebookName: parsed.facebookName ?? prev.facebookName,
+            facebookUrl: parsed.facebookUrl ?? prev.facebookUrl,
           }));
         }
       } catch {
@@ -144,6 +149,28 @@ export function Contact({ season }: ContactProps) {
                   <div>
                     <div className="font-medium">{contactInfo.hours || 'Mon-Fri: 7AM-6PM'}</div>
                     <div className="text-sm text-muted-foreground">{contactInfo.weekendNote || 'Weekend emergency service'}</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center space-x-4 group">
+                  <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                    <Facebook className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    {(() => {
+                      const name = contactInfo.facebookName || contactInfo.facebook || 'Facebook';
+                      const rawUrl = contactInfo.facebookUrl || contactInfo.facebook;
+                      const url = rawUrl
+                        ? (rawUrl.startsWith('http') ? rawUrl : `https://facebook.com/${rawUrl}`)
+                        : undefined;
+                      return url ? (
+                        <a href={url} target="_blank" rel="noopener noreferrer" className="font-medium text-primary hover:underline">
+                          {name}
+                        </a>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">{name}</div>
+                      );
+                    })()}
                   </div>
                 </div>
               </div>

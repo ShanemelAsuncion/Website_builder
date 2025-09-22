@@ -117,6 +117,7 @@ export const initialContent = {
     email: 'info@proseason.com',
     address: 'Greater Metro Area',
     hours: 'Mon-Fri: 7AM-6PM',
-    weekendNote: 'Weekend emergency service'
+    weekendNote: 'Weekend emergency service',
+    facebook: 'https://facebook.com/proseason'
   }
 };

@@ -1,13 +1,55 @@
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { ArrowRight } from "lucide-react";
+import { contentApi } from "../services/api";
 
 interface FooterProps {
   season: 'summer' | 'winter';
 }
 
 export function Footer({ season }: FooterProps) {
+  const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string }>({
+    phone: '(555) 123-4567',
+    email: 'info@proseason.com',
+    address: 'Greater Metro Area',
+  });
+  const [services, setServices] = useState<Array<{ title: string }>>([]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const cItem = items.find(i => i.key === 'contact');
+        if (cItem?.value) {
+          const parsed = JSON.parse(cItem.value) as { phone?: string; email?: string; address?: string; hours?: string; weekendNote?: string };
+          setContactInfo(prev => ({
+            phone: parsed.phone || prev.phone,
+            email: parsed.email || prev.email,
+            address: parsed.address || prev.address,
+            hours: parsed.hours || prev.hours,
+            weekendNote: parsed.weekendNote || prev.weekendNote,
+          }));
+        }
+        const sSummer = items.find(i => i.key === 'services.summer');
+        const sWinter = items.find(i => i.key === 'services.winter');
+        const summerArr = sSummer?.value ? JSON.parse(sSummer.value) : [];
+        const winterArr = sWinter?.value ? JSON.parse(sWinter.value) : [];
+        const merged = ([] as any[]).concat(Array.isArray(summerArr) ? summerArr : [], Array.isArray(winterArr) ? winterArr : []);
+        setServices(merged);
+      } catch {
+        // keep fallbacks
+      }
+    })();
+  }, []);
+
+
+  const scrollToContact = () => {
+    const el = document.getElementById('contact');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
   return (
     <footer className="bg-gradient-to-br from-primary to-primary/80 text-primary-foreground">
       <div className="container mx-auto px-6 py-16">
@@ -31,30 +73,27 @@ export function Footer({ season }: FooterProps) {
                 15+ Years Experience
               </Badge>
             </div>
-            <Button variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
+            <Button onClick={scrollToContact} variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
               Emergency Service
               <ArrowRight className="ml-2 h-4 w-4" />
             </Button>
           </div>
 
           <div>
-            <h4 className="text-lg mb-6">
-              {season === 'summer' ? 'Summer Services' : 'Winter Services'}
-            </h4>
+            <h4 className="text-lg mb-6">All Services</h4>
             <ul className="space-y-3 text-primary-foreground/80">
-              {season === 'summer' ? (
-                <>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Precision Lawn Care</li>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Landscape Design</li>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Garden Maintenance</li>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Irrigation Systems</li>
-                </>
+              {services.length > 0 ? (
+                services.map((s, i) => (
+                  <li key={i} className="hover:text-primary-foreground transition-colors cursor-pointer">
+                    <a href="#services" className="hover:underline">
+                      {s.title}
+                    </a>
+                  </li>
+                ))
               ) : (
                 <>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Snow Removal</li>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Ice Management</li>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Emergency Plowing</li>
-                  <li className="hover:text-primary-foreground transition-colors cursor-pointer">Commercial Contracts</li>
+                  <li className="hover:text-primary-foreground transition-colors cursor-pointer"><a href="#services" className="hover:underline">Service 1</a></li>
+                  <li className="hover:text-primary-foreground transition-colors cursor-pointer"><a href="#services" className="hover:underline">Service 2</a></li>
                 </>
               )}
             </ul>
@@ -63,16 +102,16 @@ export function Footer({ season }: FooterProps) {
           <div>
             <h4 className="text-lg mb-6">Connect</h4>
             <ul className="space-y-3 text-primary-foreground/80">
-              <li>(555) 123-4567</li>
-              <li>info@proseason.com</li>
-              <li>Mon-Fri: 7AM-6PM</li>
-              <li>Emergency: 24/7</li>
+              <li>{contactInfo.phone}</li>
+              <li>{contactInfo.email}</li>
+              <li>{contactInfo.hours || 'Mon-Fri: 7AM-6PM'}</li>
+              <li>{contactInfo.weekendNote || 'Emergency: 24/7'}</li>
             </ul>
             
             <div className="mt-8">
               <h5 className="text-sm mb-3 text-primary-foreground/60">SERVICE AREAS</h5>
               <p className="text-sm text-primary-foreground/80">
-                Greater Metro Area • 50+ Mile Radius • Commercial & Residential
+                {contactInfo.address} • 50+ Mile Radius • Commercial & Residential
               </p>
             </div>
           </div>

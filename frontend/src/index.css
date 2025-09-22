@@ -175,6 +175,28 @@
     text-decoration: underline dotted;
   }
 
+  /* --- Custom UI overrides: Tabs hover colors --- */
+  /* Ensure tabs change color on hover even if Tailwind did not generate hover:bg/text utilities */
+  [data-slot="tabs-trigger"]:hover {
+    background-color: var(--color-green-100);
+    color: var(--color-green-600);
+    transition-property: color, background-color, box-shadow;
+    transition-duration: var(--default-transition-duration);
+    transition-timing-function: var(--default-transition-timing-function);
+  }
+
+  /* Dark mode hover override (supports both .dark class and prefers-color-scheme) */
+  .dark [data-slot="tabs-trigger"]:hover {
+    background-color: color-mix(in oklab, var(--color-emerald-700) 30%, transparent);
+    color: var(--foreground);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light) [data-slot="tabs-trigger"]:hover {
+      background-color: color-mix(in oklab, var(--color-emerald-700) 30%, transparent);
+      color: var(--foreground);
+    }
+  }
+
   h1, h2, h3, h4, h5, h6 {
     font-size: inherit;
     font-weight: inherit;

@@ -259,21 +259,6 @@ export const Login = ({ season, onSeasonToggle }: LoginProps) => {
               </motion.div>
             </form>
 
-            {/* Demo Credentials */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6, duration: 0.3 }}
-              className="text-center space-y-2"
-            >
-              <div className="text-xs text-muted-foreground">
-                Demo Credentials
-              </div>
-              <div className="text-xs bg-muted/50 rounded-lg p-3 space-y-1">
-                <div><strong>Email:</strong> admin@example.com</div>
-                <div><strong>Password:</strong> admin123</div>
-              </div>
-            </motion.div>
 
             {/* Security Notice */}
             <motion.div
