@@ -253,9 +253,9 @@ export const Dashboard = () => {
   const SeasonIcon = season === 'summer' ? Sun : Snowflake;
 
   return (
-    <div className="container mx-auto px-6 py-8">
+    <div className="container mx-auto px-6 py-8" data-season={season}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-        <TabsList>
+        <TabsList className="w-full overflow-x-auto no-scrollbar">
           <TabsTrigger value="hero"><FileText className="w-4 h-4 mr-2" />Hero</TabsTrigger>
           <TabsTrigger value="services"><Briefcase className="w-4 h-4 mr-2" />Services</TabsTrigger>
           <TabsTrigger value="portfolio"><ImageIcon className="w-4 h-4 mr-2" />Portfolio</TabsTrigger>

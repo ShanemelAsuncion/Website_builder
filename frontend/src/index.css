@@ -95,6 +95,36 @@
     transform: translateY(0);
     box-shadow: 0 6px 14px rgba(0,0,0,0.10);
   }
+
+  /* --- Mobile helpers --- */
+  /* Hide horizontal scrollbar on small-screen TabsList scroller */
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  /* --- Dashboard Tabs season-based styles --- */
+  /* Hover */
+  [data-season="summer"] [data-slot="tabs-trigger"]:hover {
+    background-color: var(--color-green-100);
+    color: var(--color-green-600);
+  }
+  [data-season="winter"] [data-slot="tabs-trigger"]:hover {
+    background-color: var(--color-blue-100);
+    color: var(--color-blue-600);
+  }
+
+  /* Active */
+  [data-season="summer"] [data-slot="tabs-trigger"][data-state="active"] {
+    background-color: var(--color-green-100);
+    color: var(--color-green-600);
+    border-color: color-mix(in oklab, var(--color-green-600) 30%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-green-600) 30%, transparent);
+  }
+  [data-season="winter"] [data-slot="tabs-trigger"][data-state="active"] {
+    background-color: var(--color-blue-100);
+    color: var(--color-blue-600);
+    border-color: color-mix(in oklab, var(--color-blue-600) 30%, transparent);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--color-blue-600) 30%, transparent);
+  }
   }
 }
 
