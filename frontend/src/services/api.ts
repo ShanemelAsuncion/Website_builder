@@ -53,6 +53,14 @@ export const authApi = {
   changePassword: async (currentPassword: string, newPassword: string) => {
     const response = await api.post('/auth/change-password', { currentPassword, newPassword });
     return response.data;
+  },
+  upload: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await api.post('/upload', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    return response.data as { url: string; path: string };
   }
 };
 

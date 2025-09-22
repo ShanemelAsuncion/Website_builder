@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Input } from "./ui/input";
@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Phone, Mail, MapPin, Clock, Send, CheckCircle, Loader2 } from "lucide-react";
 import { motion } from "motion/react";
 import axios from 'axios';
+import { contentApi } from "../services/api";
 
 interface ContactProps {
   season: 'summer' | 'winter';
@@ -24,6 +25,33 @@ export function Contact({ season }: ContactProps) {
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [responseMsg, setResponseMsg] = useState('');
 
+  const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string }>({
+    phone: '(555) 123-4567',
+    email: 'info@proseason.com',
+    address: 'Greater Metro Area',
+  });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const cItem = items.find(i => i.key === 'contact');
+        if (cItem?.value) {
+          const parsed = JSON.parse(cItem.value) as { phone?: string; email?: string; address?: string; hours?: string; weekendNote?: string };
+          setContactInfo(prev => ({
+            phone: parsed.phone || prev.phone,
+            email: parsed.email || prev.email,
+            address: parsed.address || prev.address,
+            hours: parsed.hours || prev.hours,
+            weekendNote: parsed.weekendNote || prev.weekendNote,
+          }));
+        }
+      } catch {
+        // keep fallbacks
+      }
+    })();
+  }, []);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
     setFormData(prev => ({ ...prev, [id]: value }));
@@ -39,7 +67,7 @@ export function Contact({ season }: ContactProps) {
     setResponseMsg('');
 
     try {
-      const response = await axios.post('http://localhost:5000/api/contact', formData);
+      const response = await axios.post<{ message: string }>('http://localhost:5000/api/contact', formData);
       setStatus('success');
       setResponseMsg(response.data.message);
       setFormData({ name: '', email: '', phone: '', service: '', message: '' });
@@ -84,8 +112,8 @@ export function Contact({ season }: ContactProps) {
                     <Phone className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <div className="font-medium">(555) 123-4567</div>
-                    <div className="text-sm text-muted-foreground">Available 24/7 for emergencies</div>
+                    <div className="font-medium">{contactInfo.phone}</div>
+                    <div className="text-sm text-muted-foreground">{contactInfo.weekendNote || 'Available 24/7 for emergencies'}</div>
                   </div>
                 </div>
                 
@@ -94,7 +122,7 @@ export function Contact({ season }: ContactProps) {
                     <Mail className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <div className="font-medium">info@proseason.com</div>
+                    <div className="font-medium">{contactInfo.email}</div>
                     <div className="text-sm text-muted-foreground">Response within 2 hours</div>
                   </div>
                 </div>
@@ -104,7 +132,7 @@ export function Contact({ season }: ContactProps) {
                     <MapPin className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <div className="font-medium">Greater Metro Area</div>
+                    <div className="font-medium">{contactInfo.address}</div>
                     <div className="text-sm text-muted-foreground">50+ mile service radius</div>
                   </div>
                 </div>
@@ -114,8 +142,8 @@ export function Contact({ season }: ContactProps) {
                     <Clock className="h-5 w-5 text-primary" />
                   </div>
                   <div>
-                    <div className="font-medium">Mon-Fri: 7AM-6PM</div>
-                    <div className="text-sm text-muted-foreground">Weekend emergency service</div>
+                    <div className="font-medium">{contactInfo.hours || 'Mon-Fri: 7AM-6PM'}</div>
+                    <div className="text-sm text-muted-foreground">{contactInfo.weekendNote || 'Weekend emergency service'}</div>
                   </div>
                 </div>
               </div>

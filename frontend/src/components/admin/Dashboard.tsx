@@ -32,7 +32,7 @@ interface DashboardContextType {
   setHeaderControls?: (controls: { hasUnsavedChanges?: boolean; onSave?: () => void }) => void;
 }
 
-type PortfolioItem = { id: string; title: string; description: string; imageUrl: string; location: string; duration: string; };
+type PortfolioItem = { id: string; title: string; description: string; imageUrl: string; location: string; duration: string; category?: string; featured?: boolean };
 type ServiceItem = { id: string; title: string; description: string; price: string };
 type TestimonialItem = { id: string; name: string; role: string; rating: number; comment: string };
 
@@ -50,8 +50,8 @@ export const Dashboard = () => {
   
   const [uiContent, setUiContent] = useState({
     hero: {
-      summer: { title: "", subtitle: "", ctaText: "" },
-      winter: { title: "", subtitle: "", ctaText: "" }
+      summer: { title: "", subtitle: "", ctaText: "", activeProjects: 12, responseTime: '< 2 hours', satisfactionRate: '99.8%' },
+      winter: { title: "", subtitle: "", ctaText: "", activeProjects: 12, responseTime: '< 2 hours', satisfactionRate: '99.8%' }
     },
     services: {
       summer: [] as ServiceItem[],
@@ -132,9 +132,11 @@ export const Dashboard = () => {
 
       setHasUnsavedChanges(false);
       alert('Changes saved successfully!');
-    } catch (err) { 
-      alert('Failed to save changes. Please try again.');
-      setError('Failed to save changes. Please try again.');
+    } catch (err: any) { 
+      const serverMsg = err?.response?.data?.error || err?.message || 'Unknown error';
+      console.error('Save failed:', err);
+      alert(`Failed to save changes. ${serverMsg}`);
+      setError(`Failed to save changes. ${serverMsg}`);
     } finally {
       setIsSaving(false);
     }
@@ -152,11 +154,11 @@ export const Dashboard = () => {
 
   // CRUD Handlers for Portfolio
   const addPortfolioItem = () => {
-    const newItem = { id: `p-${Date.now()}`, title: 'New Project', description: '', imageUrl: '', location: '', duration: '' };
+    const newItem: PortfolioItem = { id: `p-${Date.now()}`, title: 'New Project', description: '', imageUrl: '', location: '', duration: '', category: '', featured: false };
     const updatedPortfolio = { ...uiContent.portfolio, [season]: [...uiContent.portfolio[season], newItem] };
     handleUiChange('portfolio', updatedPortfolio);
   };
-  const updatePortfolioItem = (id: string, field: keyof PortfolioItem, value: string) => {
+  const updatePortfolioItem = (id: string, field: keyof PortfolioItem, value: any) => {
     const updatedItems = uiContent.portfolio[season].map(p => p.id === id ? { ...p, [field]: value } : p);
     const updatedPortfolio = { ...uiContent.portfolio, [season]: updatedItems };
     handleUiChange('portfolio', updatedPortfolio);
@@ -165,6 +167,22 @@ export const Dashboard = () => {
     const updatedItems = uiContent.portfolio[season].filter(p => p.id !== id);
     const updatedPortfolio = { ...uiContent.portfolio, [season]: updatedItems };
     handleUiChange('portfolio', updatedPortfolio);
+  };
+
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const handlePortfolioImageUpload = async (id: string, file: File | null) => {
+    if (!file) return;
+    try {
+      setUploadingId(id);
+      const { url } = await authApi.upload(file);
+      const imageUrl = url; // store absolute URL for reliable display across origins
+      updatePortfolioItem(id, 'imageUrl', imageUrl);
+      setHasUnsavedChanges(true);
+    } catch (e: any) {
+      alert(e?.response?.data?.error || 'Failed to upload image.');
+    } finally {
+      setUploadingId(null);
+    }
   };
 
   // CRUD Handlers for Services
@@ -265,6 +283,23 @@ export const Dashboard = () => {
                 <Label>CTA Text</Label>
                 <Input value={uiContent.hero[season].ctaText} onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], ctaText: e.target.value } })} />
               </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div>
+                  <Label>Active Projects</Label>
+                  <Input type="number" value={uiContent.hero[season].activeProjects}
+                    onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], activeProjects: Number(e.target.value) } })} />
+                </div>
+                <div>
+                  <Label>Response Time</Label>
+                  <Input value={uiContent.hero[season].responseTime}
+                    onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], responseTime: e.target.value } })} />
+                </div>
+                <div>
+                  <Label>Satisfaction Rate</Label>
+                  <Input value={uiContent.hero[season].satisfactionRate}
+                    onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], satisfactionRate: e.target.value } })} />
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -306,19 +341,39 @@ export const Dashboard = () => {
               {uiContent.portfolio[season].map(p => (
                 <div key={p.id} className="border p-4 rounded-lg space-y-2">
                   <div className="flex justify-between items-center">
-                    <h4 className="font-medium">{p.title}</h4>
+                    <h4 className="font-medium">{p.title || 'Untitled Project'}</h4>
                     <Button variant="ghost" size="sm" onClick={() => deletePortfolioItem(p.id)}><Trash2 className="w-4 h-4" /></Button>
                   </div>
                   <Label>Title</Label>
                   <Input value={p.title} onChange={e => updatePortfolioItem(p.id, 'title', e.target.value)} />
                   <Label>Description</Label>
                   <Input value={p.description} onChange={e => updatePortfolioItem(p.id, 'description', e.target.value)} />
+                  <Label>Category</Label>
+                  <Input value={p.category || ''} onChange={e => updatePortfolioItem(p.id, 'category', e.target.value)} />
                   <Label>Location</Label>
                   <Input value={p.location} onChange={e => updatePortfolioItem(p.id, 'location', e.target.value)} />
                   <Label>Duration</Label>
                   <Input value={p.duration} onChange={e => updatePortfolioItem(p.id, 'duration', e.target.value)} />
-                  <Label>Image URL</Label>
-                  <Input value={p.imageUrl} onChange={e => updatePortfolioItem(p.id, 'imageUrl', e.target.value)} />
+                  <Label>Image</Label>
+                  <div className="flex items-center gap-3">
+                    <Input placeholder="Image URL" value={p.imageUrl} onChange={e => updatePortfolioItem(p.id, 'imageUrl', e.target.value)} />
+                    <div>
+                      <input
+                        id={`file-${p.id}`}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={e => handlePortfolioImageUpload(p.id, e.target.files?.[0] || null)}
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById(`file-${p.id}`)?.click()} disabled={uploadingId === p.id}>
+                        {uploadingId === p.id ? 'Uploading...' : 'Upload Image'}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pt-2">
+                    <Switch checked={!!p.featured} onCheckedChange={(checked: boolean) => updatePortfolioItem(p.id, 'featured', checked)} />
+                    <Label>Featured</Label>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -369,6 +424,14 @@ export const Dashboard = () => {
               <div>
                 <Label>Address</Label>
                 <Textarea value={uiContent.contact.address} onChange={e => handleUiChange('contact', { ...uiContent.contact, address: e.target.value })} />
+              </div>
+              <div>
+                <Label>Hours</Label>
+                <Input value={(uiContent as any).contact.hours || ''} onChange={e => handleUiChange('contact', { ...uiContent.contact, hours: e.target.value })} />
+              </div>
+              <div>
+                <Label>Weekend/Emergency Note</Label>
+                <Input value={(uiContent as any).contact.weekendNote || ''} onChange={e => handleUiChange('contact', { ...uiContent.contact, weekendNote: e.target.value })} />
               </div>
             </CardContent>
           </Card>

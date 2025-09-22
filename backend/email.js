@@ -1,7 +1,8 @@
-require('dotenv').config();
-const nodemailer = require('nodemailer');
+import dotenv from 'dotenv';
+import nodemailer from 'nodemailer';
 
-// Create a transporter object using the default SMTP transport
+dotenv.config();
+
 const transporter = nodemailer.createTransport({
   service: 'gmail',
   auth: {
@@ -10,12 +11,11 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-// Function to send a contact form email
-const sendContactEmail = async ({ name, email, phone, service, message }) => {
+export async function sendContactEmail({ name, email, phone, service, message }) {
   const mailOptions = {
     from: `"Blade and Snow Services" <${process.env.EMAIL_USER}>`,
-    to: process.env.EMAIL_USER, // Send the email to yourself
-    replyTo: email, // So you can reply directly to the user
+    to: process.env.EMAIL_USER,
+    replyTo: email,
     subject: `New Quote Request: ${service}`,
     html: `
       <div style="font-family: Arial, sans-serif; line-height: 1.6;">
@@ -42,6 +42,4 @@ const sendContactEmail = async ({ name, email, phone, service, message }) => {
     console.error('Error sending email:', error);
     throw new Error('Failed to send email');
   }
-};
-
-module.exports = { sendContactEmail };
+}

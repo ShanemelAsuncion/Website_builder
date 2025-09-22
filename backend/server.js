@@ -2,12 +2,17 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import express from 'express';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 import sqlite3 from 'sqlite3';
 import { open } from 'sqlite';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import bodyParser from 'body-parser';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import { initialContent } from './seedData.js';
 import { sendContactEmail } from './email.js';
 
@@ -24,7 +29,7 @@ const PORT = process.env.PORT || 5000;
 
 // Use a consistent JWT secret for development
 // This secret is used for both signing and verifying tokens
-const JWT_SECRET = 'your-super-secret-key-1234567890';
+const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-1234567890';
 const JWT_EXPIRES_IN = '1h';
 
 console.log('Server starting with JWT configuration:', {
@@ -33,14 +38,65 @@ console.log('Server starting with JWT configuration:', {
 });
 
 // Middleware
+app.use(helmet({
+  // Disable CSP for dev to avoid blocking Vite assets and cross-origin resources
+  contentSecurityPolicy: false,
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+}));
+
+// Global basic rate limiter
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  limit: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+app.use(globalLimiter);
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001'],
+  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'],
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 
 app.use(bodyParser.json());
+
+// Static hosting for uploaded files
+const uploadsDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir);
+}
+app.use('/uploads', express.static(uploadsDir));
+
+// Configure multer storage for uploads
+const storage = multer.diskStorage({
+  destination: function (_req, _file, cb) {
+    cb(null, uploadsDir);
+  },
+  filename: function (_req, file, cb) {
+    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname) || '';
+    cb(null, `${unique}${ext}`);
+  }
+});
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
+});
+
+// Per-route strict limiters
+const contactLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
+const uploadLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 20,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false,
+});
 
 // Database setup
 let db;
@@ -95,6 +151,26 @@ async function seedDatabase() {
         ['testimonials', JSON.stringify(initialContent.testimonials), 'json']
       );
 
+      // Seed hero content
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['hero.summer', JSON.stringify(initialContent.hero.summer), 'json']
+      );
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['hero.winter', JSON.stringify(initialContent.hero.winter), 'json']
+      );
+
+      // Seed services
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['services.summer', JSON.stringify(initialContent.services.summer), 'json']
+      );
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['services.winter', JSON.stringify(initialContent.services.winter), 'json']
+      );
+
       // Seed summer portfolio
       await db.run(
         'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
@@ -107,6 +183,12 @@ async function seedDatabase() {
         ['portfolio.winter', JSON.stringify(initialContent.portfolio.winter), 'json']
       );
 
+      // Seed contact info
+      await db.run(
+        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+        ['contact', JSON.stringify(initialContent.contact), 'json']
+      );
+
       console.log('Database seeded successfully.');
     }
   } catch (err) {
@@ -114,9 +196,42 @@ async function seedDatabase() {
   }
 }
 
+// Create default admin user if it doesn't exist
+async function createDefaultAdmin() {
+  try {
+    const adminEmail = 'admin@example.com';
+    const adminPassword = 'admin123';
+    
+    // Check if admin user already exists
+    const existingAdmin = await db.get('SELECT * FROM users WHERE email = ?', [adminEmail]);
+    
+    if (!existingAdmin) {
+      console.log('Creating default admin user...');
+      
+      // Hash the password
+      const hashedPassword = await bcrypt.hash(adminPassword, 10);
+      
+      // Create the admin user
+      await db.run(
+        'INSERT INTO users (email, password) VALUES (?, ?)',
+        [adminEmail, hashedPassword]
+      );
+      
+      console.log('Default admin user created successfully.');
+      console.log('Email: admin@example.com');
+      console.log('Password: admin123');
+    } else {
+      console.log('Admin user already exists.');
+    }
+  } catch (err) {
+    console.error('Error creating default admin user:', err);
+  }
+}
+
 // Initialize and seed the database when the server starts
 initializeDatabase()
   .then(() => seedDatabase())
+  .then(() => createDefaultAdmin())
   .catch(console.error);
 
 // Auth middleware
@@ -126,14 +241,10 @@ const authenticateToken = (req, res, next) => {
   
   if (!token) return res.sendStatus(401);
 
-  console.log('Verifying token:', token);
   try {
-    console.log('Verifying token with secret:', JWT_SECRET);
-    console.log('Token to verify:', token);
-    
     // Verify the token
     const user = jwt.verify(token, JWT_SECRET);
-    console.log('Token verified successfully for user:', user);
+    console.log('Token verified successfully');
     
     // Check token expiration
     const now = Math.floor(Date.now() / 1000);
@@ -309,7 +420,8 @@ app.post('/api/auth/login', async (req, res) => {
 });
 
 // Content management routes
-app.get('/api/content', authenticateToken, async (req, res) => {
+// Public endpoint to fetch all content (no authentication required)
+app.get('/api/content', async (req, res) => {
   try {
     const rows = await db.all('SELECT * FROM content');
     res.json(rows);
@@ -348,30 +460,54 @@ app.put('/api/content/:id', authenticateToken, async (req, res) => {
     
     // Check if content with this ID exists
     const existing = await db.get('SELECT * FROM content WHERE id = ?', [id]);
-    
     if (existing) {
-      // Update existing content
-      const result = await db.run(
+      await db.run(
         'UPDATE content SET key = ?, value = ?, type = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
         [key, value, type, id]
       );
       const updated = await db.get('SELECT * FROM content WHERE id = ?', [id]);
-      res.json(updated);
-    } else {
-      // Create new content
-      const result = await db.run(
-        'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
-        [key, value, type]
-      );
-      const newItem = await db.get('SELECT * FROM content WHERE id = ?', [result.lastID]);
-      res.status(201).json(newItem);
+      return res.json(updated);
     }
+
+    // If not found by ID, try upsert by KEY to avoid UNIQUE violations
+    const existingByKey = await db.get('SELECT * FROM content WHERE key = ?', [key]);
+    if (existingByKey) {
+      await db.run(
+        'UPDATE content SET value = ?, type = ?, updatedAt = CURRENT_TIMESTAMP WHERE key = ?',
+        [value, type, key]
+      );
+      const updated = await db.get('SELECT * FROM content WHERE key = ?', [key]);
+      return res.json(updated);
+    }
+
+    // Create new content
+    const result = await db.run(
+      'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
+      [key, value, type]
+    );
+    const newItem = await db.get('SELECT * FROM content WHERE id = ?', [result.lastID]);
+    return res.status(201).json(newItem);
   } catch (error) {
     console.error('Error saving content:', error);
     if (error.message.includes('UNIQUE constraint failed')) {
       return res.status(400).json({ error: 'Content with this key already exists' });
     }
     res.status(500).json({ error: 'Failed to save content' });
+  }
+});
+
+// Upload endpoint for images (auth required)
+app.post('/api/upload', authenticateToken, uploadLimiter, upload.single('file'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    const relative = `/uploads/${req.file.filename}`;
+    const absolute = `${req.protocol}://${req.get('host')}${relative}`;
+    return res.status(201).json({ url: absolute, path: relative });
+  } catch (error) {
+    console.error('Upload error:', error);
+    return res.status(500).json({ error: 'Failed to upload file' });
   }
 });
 
@@ -410,7 +546,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Contact form endpoint
-app.post('/api/contact', async (req, res) => {
+app.post('/api/contact', contactLimiter, async (req, res) => {
   try {
     const { name, email, phone, service, message } = req.body;
 

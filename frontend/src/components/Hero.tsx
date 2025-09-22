@@ -15,6 +15,9 @@ interface HeroContent {
   ctaText?: string;
   image: string;
   gradient: string;
+  activeProjects?: number;
+  responseTime?: string;
+  satisfactionRate?: string;
 }
 
 export function Hero({ season }: HeroProps) {
@@ -123,18 +126,18 @@ export function Hero({ season }: HeroProps) {
 
             <div className="flex items-center space-x-8 pt-4">
               <div className="text-center">
-                <div className="text-2xl">500+</div>
-                <div className="text-sm text-white/70">Projects Completed</div>
+                <div className="text-2xl">{content.activeProjects ?? 12}</div>
+                <div className="text-sm text-white/70">Active Projects</div>
               </div>
               <div className="w-px h-12 bg-white/30"></div>
               <div className="text-center">
-                <div className="text-2xl">15+</div>
-                <div className="text-sm text-white/70">Years Experience</div>
+                <div className="text-2xl">{content.responseTime ?? '< 2 hours'}</div>
+                <div className="text-sm text-white/70">Response Time</div>
               </div>
               <div className="w-px h-12 bg-white/30"></div>
               <div className="text-center">
-                <div className="text-2xl">24/7</div>
-                <div className="text-sm text-white/70">Emergency Service</div>
+                <div className="text-2xl">{content.satisfactionRate ?? '99.8%'}</div>
+                <div className="text-sm text-white/70">Satisfaction Rate</div>
               </div>
             </div>
           </motion.div>

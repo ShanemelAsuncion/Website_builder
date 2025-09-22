@@ -1,14 +1,122 @@
 export const initialContent = {
-  testimonials: [
-    { id: 't1', name: 'Jane D.', rating: 5, comment: 'Fantastic service, my yard looks amazing!' },
-    { id: 't2', name: 'Mark R.', rating: 4, comment: 'Reliable snow removal all winter.' }
-  ],
-  portfolio: {
+  hero: {
+    summer: {
+      title: 'Transform Your Outdoor Space',
+      subtitle: 'Professional lawn care that brings your property to life',
+      ctaText: 'Get a Free Quote',
+      activeProjects: 12,
+      responseTime: '< 2 hours',
+      satisfactionRate: '99.8%'
+    },
+    winter: {
+      title: 'Clear Paths, Safe Spaces',
+      subtitle: 'Reliable snow removal when you need it most',
+      ctaText: 'Request Snow Service',
+      activeProjects: 12,
+      responseTime: '< 2 hours',
+      satisfactionRate: '99.8%'
+    }
+  },
+
+  services: {
     summer: [
-      { id: 'p1', title: 'Backyard Makeover', description: 'Full landscape redesign with patio and lighting', imageUrl: '' }
+      {
+        id: 's1',
+        title: 'Precision Lawn Care',
+        description: 'Weekly maintenance that keeps your lawn looking magazine-ready',
+        image: 'https://images.unsplash.com/photo-1734303023491-db8037a21f09?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBsYW5kc2NhcGluZyUyMGVxdWlwbWVudHxlbnwxfHx8fDE3NTgyMjEyMDR8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
+        price: 'Starting at $45/visit',
+        features: ['Professional mowing patterns', 'Edge trimming', 'Debris removal', 'Seasonal scheduling'],
+        color: 'from-green-500 to-emerald-600'
+      },
+      {
+        id: 's2',
+        title: 'Landscape Design',
+        description: 'Transform your vision into a stunning outdoor reality',
+        image: 'https://images.unsplash.com/photo-1746458258536-b9ee5db20a73?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxtb2Rlcm4lMjBob3VzZSUyMGV4dGVyaW9yJTIwbGFuZHNjYXBpbmd8ZW58MXx8fHwxNzU4MjIxMjA0fDA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
+        price: 'Custom pricing',
+        features: ['3D design concepts', 'Plant selection', 'Hardscape installation', 'Ongoing maintenance'],
+        color: 'from-amber-500 to-orange-600'
+      }
     ],
     winter: [
-      { id: 'p2', title: 'Commercial Snow Route', description: 'Plowing and ice management for retail lot', imageUrl: '' }
+      {
+        id: 's3',
+        title: 'Snow Removal',
+        description: '24/7 clearing service that keeps you moving all winter long',
+        image: 'https://images.unsplash.com/photo-1595391595283-5f057807d054?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHNlYXJjaHwxfHxzbm93JTIwcGxvdyUyMHRydWNrJTIwd2ludGVyfGVufDF8fHx8MTc1ODIyMTIwNXww&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
+        price: 'Starting at $75/plow',
+        features: ['Emergency response', 'Salt application', 'Sidewalk clearing', 'Commercial rates available'],
+        color: 'from-blue-500 to-indigo-600'
+      },
+      {
+        id: 's4',
+        title: 'Ice Management',
+        description: 'Proactive treatment to prevent dangerous ice formation',
+        image: 'https://images.unsplash.com/photo-1709668741587-cd18a016493c?crop=entropy&cs=tinysrgb&fit=max&fm=jpg&ixid=M3w3Nzg4Nzd8MHwxfHx3aW50ZXIlMjBzbm93JTIwaG91c2UlMjBkcml2ZXdheXxlbnwxfHx8fDE3NTgyMjEyMDR8MA&ixlib=rb-4.1.0&q=80&w=1080&utm_source=figma&utm_medium=referral',
+        price: 'Seasonal contracts',
+        features: ['Pre-treatment application', 'Storm monitoring', 'Liability protection', 'Eco-friendly options'],
+        color: 'from-slate-500 to-gray-600'
+      }
     ]
+  },
+
+  portfolio: {
+    summer: [
+      {
+        id: 'p1',
+        title: 'Backyard Makeover',
+        category: 'Landscaping',
+        description: 'Full landscape redesign with patio and lighting',
+        imageUrl: 'https://images.unsplash.com/photo-1596131280636-65b1cfd5a8bc?q=80&w=1600&auto=format&fit=crop',
+        location: 'Maple Grove, MN',
+        duration: '3 weeks',
+        featured: true
+      },
+      {
+        id: 'p2',
+        title: 'Front Yard Refresh',
+        category: 'Maintenance',
+        description: 'Edging, seasonal plants, and mulch with crisp lines',
+        imageUrl: 'https://images.unsplash.com/photo-1503602642458-232111445657?q=80&w=1600&auto=format&fit=crop',
+        location: 'Eden Prairie, MN',
+        duration: '4 days'
+      }
+    ],
+    winter: [
+      {
+        id: 'p3',
+        title: 'Commercial Snow Route',
+        category: 'Snow & Ice',
+        description: 'Plowing and ice management for a retail complex',
+        imageUrl: 'https://images.unsplash.com/photo-1607862442919-6cb7e64e5d3a?q=80&w=1600&auto=format&fit=crop',
+        location: 'Bloomington, MN',
+        duration: 'Seasonal',
+        featured: true
+      },
+      {
+        id: 'p4',
+        title: 'Residential Driveway',
+        category: 'Snow Removal',
+        description: 'Storm response with repeat clearings through blizzard',
+        imageUrl: 'https://images.unsplash.com/photo-1607649867894-7af6306f37fe?q=80&w=1600&auto=format&fit=crop',
+        location: 'Plymouth, MN',
+        duration: '2 days'
+      }
+    ]
+  },
+
+  testimonials: [
+    { id: 't1', name: 'Jane D.', role: 'Homeowner', rating: 5, comment: 'Fantastic service, my yard looks amazing!' },
+    { id: 't2', name: 'Mark R.', role: 'Facilities Manager', rating: 5, comment: 'Reliable snow removal all winter. Highly recommend.' },
+    { id: 't3', name: 'Priya S.', role: 'Property Owner', rating: 4, comment: 'Professional crew and great communication.' }
+  ],
+
+  contact: {
+    phone: '(555) 123-4567',
+    email: 'info@proseason.com',
+    address: 'Greater Metro Area',
+    hours: 'Mon-Fri: 7AM-6PM',
+    weekendNote: 'Weekend emergency service'
   }
 };

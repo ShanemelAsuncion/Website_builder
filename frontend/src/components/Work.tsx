@@ -91,8 +91,10 @@ export function Work({ season }: WorkProps) {
     return null;
   }
 
-  const featuredProject = projects.find(p => p.featured) || projects[0];
-  const otherProjects = projects.filter(p => !p.featured);
+  const featuredProject = projects.find(p => p.featured);
+  const otherProjects = featuredProject
+    ? projects.filter(p => p.id !== featuredProject.id)
+    : projects;
 
   return (
     <section id="work" className="py-24 bg-gradient-to-br from-background to-muted/30">
@@ -117,69 +119,71 @@ export function Work({ season }: WorkProps) {
           </p>
         </motion.div>
 
-        {/* Featured Project */}
-        <motion.div 
-          initial={{ opacity: 0, y: 30 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6, delay: 0.2 }}
-          className="mb-20"
-        >
-          <div className="bg-background rounded-3xl overflow-hidden border shadow-xl">
-            <div className="grid lg:grid-cols-2 gap-0">
-              <div className="relative h-80 lg:h-auto overflow-hidden">
-                <ImageWithFallback 
-                  src={featuredProject.imageUrl} 
-                  alt={featuredProject.title} 
-                  className="w-full h-full object-cover rounded-3xl"
-                />
-                <div className="absolute inset-0 bg-gradient-to-tr from-black/50 via-transparent to-transparent"></div>
-                <div className="absolute top-6 left-6">
-                  <Badge className="bg-primary text-primary-foreground">
-                    Featured Project
+        {/* Featured Project (only if exists) */}
+        {featuredProject && (
+          <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="mb-20"
+          >
+            <div className="bg-background rounded-3xl overflow-hidden border shadow-xl">
+              <div className="grid lg:grid-cols-2 gap-0">
+                <div className="relative h-80 lg:h-auto overflow-hidden">
+                  <ImageWithFallback 
+                    src={featuredProject.imageUrl} 
+                    alt={featuredProject.title} 
+                    className="w-full h-full object-cover rounded-3xl"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-tr from-black/50 via-transparent to-transparent"></div>
+                  <div className="absolute top-6 left-6">
+                    <Badge className="bg-primary text-primary-foreground">
+                      Featured Project
+                    </Badge>
+                  </div>
+                  <div className="absolute bottom-6 right-6">
+                    <div className="flex items-center space-x-1 bg-black/50 backdrop-blur rounded-full px-3 py-1">
+                      <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
+                      <span className="text-white text-sm">5.0</span>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="p-8 lg:p-12 flex flex-col justify-center">
+                  <Badge variant="secondary" className="w-fit mb-4">
+                    {featuredProject.category}
                   </Badge>
-                </div>
-                <div className="absolute bottom-6 right-6">
-                  <div className="flex items-center space-x-1 bg-black/50 backdrop-blur rounded-full px-3 py-1">
-                    <Star className="h-4 w-4 text-yellow-400 fill-yellow-400" />
-                    <span className="text-white text-sm">5.0</span>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="p-8 lg:p-12 flex flex-col justify-center">
-                <Badge variant="secondary" className="w-fit mb-4">
-                  {featuredProject.category}
-                </Badge>
-                <h3 className="text-3xl mb-4 tracking-tight">{featuredProject.title}</h3>
-                <p className="text-muted-foreground mb-6 leading-relaxed text-lg">
-                  {featuredProject.description}
-                </p>
-                
-                <div className="grid grid-cols-2 gap-6 mb-8">
-                  <div className="flex items-center space-x-3">
-                    <MapPin className="h-5 w-5 text-primary" />
-                    <div>
-                      <div className="text-sm text-muted-foreground">Location</div>
-                      <div className="font-medium">{featuredProject.location}</div>
+                  <h3 className="text-3xl mb-4 tracking-tight">{featuredProject.title}</h3>
+                  <p className="text-muted-foreground mb-6 leading-relaxed text-lg">
+                    {featuredProject.description}
+                  </p>
+                  
+                  <div className="grid grid-cols-2 gap-6 mb-8">
+                    <div className="flex items-center space-x-3">
+                      <MapPin className="h-5 w-5 text-primary" />
+                      <div>
+                        <div className="text-sm text-muted-foreground">Location</div>
+                        <div className="font-medium">{featuredProject.location}</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center space-x-3">
+                      <Clock className="h-5 w-5 text-primary" />
+                      <div>
+                        <div className="text-sm text-muted-foreground">Duration</div>
+                        <div className="font-medium">{featuredProject.duration}</div>
+                      </div>
                     </div>
                   </div>
-                  <div className="flex items-center space-x-3">
-                    <Clock className="h-5 w-5 text-primary" />
-                    <div>
-                      <div className="text-sm text-muted-foreground">Duration</div>
-                      <div className="font-medium">{featuredProject.duration}</div>
-                    </div>
-                  </div>
+                  
+                  <Button className="w-fit group">
+                    View Case Study
+                    <ExternalLink className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
+                  </Button>
                 </div>
-                
-                <Button className="w-fit group">
-                  View Case Study
-                  <ExternalLink className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                </Button>
               </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
 
         {/* Project Gallery */}
         <div className="grid lg:grid-cols-3 gap-8 mb-16">

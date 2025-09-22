@@ -1,8 +1,10 @@
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { ImageWithFallback } from "./figma/ImageWithFallback";
 import { Scissors, Snowflake, Leaf, TreePine, ArrowRight, CheckCircle } from "lucide-react";
 import { motion } from "motion/react";
+import { contentApi } from "../services/api";
 
 interface ServicesProps {
   season: 'summer' | 'winter';
@@ -51,7 +53,58 @@ const winterServices = [
 ];
 
 export function Services({ season }: ServicesProps) {
-  const services = season === 'summer' ? summerServices : winterServices;
+  const [summerData, setSummerData] = useState(summerServices);
+  const [winterData, setWinterData] = useState(winterServices);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>; 
+        const sItem = items.find(i => i.key === 'services.summer');
+        const wItem = items.find(i => i.key === 'services.winter');
+        if (sItem?.value) {
+          const parsed = JSON.parse(sItem.value);
+          if (Array.isArray(parsed)) setSummerData(parsed);
+        }
+        if (wItem?.value) {
+          const parsed = JSON.parse(wItem.value);
+          if (Array.isArray(parsed)) setWinterData(parsed);
+        }
+      } catch {
+        // keep fallbacks
+      }
+    })();
+
+    // Live updates from admin dashboard via localStorage cache
+    const handleUpdateFromCache = () => {
+      try {
+        const sCached = localStorage.getItem('cache:services.summer');
+        const wCached = localStorage.getItem('cache:services.winter');
+        if (sCached) setSummerData(JSON.parse(sCached));
+        if (wCached) setWinterData(JSON.parse(wCached));
+      } catch {}
+    };
+
+    const onContentUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.section === 'services' || ce.detail?.persisted) {
+        handleUpdateFromCache();
+      }
+    };
+    const onStorageUpdate = (e: StorageEvent) => {
+      if (e.key === 'cache:services.summer' || e.key === 'cache:services.winter') {
+        handleUpdateFromCache();
+      }
+    };
+    window.addEventListener('content-updated', onContentUpdated);
+    window.addEventListener('storage', onStorageUpdate);
+    return () => {
+      window.removeEventListener('content-updated', onContentUpdated);
+      window.removeEventListener('storage', onStorageUpdate);
+    };
+  }, []);
+
+  const services = season === 'summer' ? summerData : winterData;
 
   return (
     <section id="services" className="py-24 bg-muted/20">
@@ -77,7 +130,10 @@ export function Services({ season }: ServicesProps) {
         </motion.div>
 
         <div className="grid lg:grid-cols-2 gap-8 max-w-6xl mx-auto">
-          {services.map((service, index) => (
+          {services.map((service, index) => {
+            const IconComp = season === 'summer' ? Leaf : Snowflake;
+            const features: string[] = Array.isArray((service as any).features) ? (service as any).features : [];
+            return (
             <motion.div
               key={index}
               initial={{ opacity: 0, y: 30 }}
@@ -91,10 +147,10 @@ export function Services({ season }: ServicesProps) {
                   alt={service.title}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />
-                <div className={`absolute inset-0 bg-gradient-to-tr ${service.color} opacity-80`}></div>
+                <div className={`absolute inset-0 bg-gradient-to-tr ${(service as any).color || (season === 'summer' ? 'from-green-500 to-emerald-600' : 'from-blue-500 to-indigo-600')} opacity-80`}></div>
                 <div className="absolute top-6 left-6">
                   <div className="bg-white/20 backdrop-blur rounded-full p-3">
-                    <service.icon className="h-6 w-6 text-white" />
+                    <IconComp className="h-6 w-6 text-white" />
                   </div>
                 </div>
                 <div className="absolute bottom-6 right-6">
@@ -110,14 +166,16 @@ export function Services({ season }: ServicesProps) {
                   {service.description}
                 </p>
 
-                <div className="space-y-3 mb-8">
-                  {service.features.map((feature, featureIndex) => (
-                    <div key={featureIndex} className="flex items-center space-x-3">
-                      <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-                      <span className="text-sm">{feature}</span>
-                    </div>
-                  ))}
-                </div>
+                {features.length > 0 && (
+                  <div className="space-y-3 mb-8">
+                    {features.map((feature, featureIndex) => (
+                      <div key={featureIndex} className="flex items-center space-x-3">
+                        <CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+                        <span className="text-sm">{feature}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 <Button className="w-full group">
                   Get Started
@@ -125,7 +183,8 @@ export function Services({ season }: ServicesProps) {
                 </Button>
               </div>
             </motion.div>
-          ))}
+            );
+          })}
         </div>
 
         <motion.div 
