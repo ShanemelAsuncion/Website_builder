@@ -182,7 +182,7 @@ export function Contact({ season }: ContactProps) {
             </div>
 
             <div className="bg-muted/50 rounded-2xl p-6">
-              <h4 className="font-medium mb-4">Why Choose ProSeason?</h4>
+              <h4 className="font-medium mb-4">Why Choose Us?</h4>
               <div className="space-y-3">
                 <div className="flex items-center space-x-3">
                   <CheckCircle className="h-4 w-4 text-green-500 flex-shrink-0" />

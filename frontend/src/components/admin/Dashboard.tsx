@@ -484,12 +484,12 @@ export const Dashboard = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <Label>Facebook Name</Label>
-                  <Input placeholder="ProSeason Landscaping" value={(uiContent as any).contact.facebookName || ''}
+                  <Input placeholder="Jay's Blade and Snow Services" value={(uiContent as any).contact.facebookName || ''}
                     onChange={e => handleUiChange('contact', { ...uiContent.contact, facebookName: e.target.value })} />
                 </div>
                 <div>
                   <Label>Facebook Link</Label>
-                  <Input placeholder="https://facebook.com/proseason" value={(uiContent as any).contact.facebookUrl || ''}
+                  <Input placeholder="https://www.facebook.com/jcatapiajrj" value={(uiContent as any).contact.facebookUrl || ''}
                     onChange={e => handleUiChange('contact', { ...uiContent.contact, facebookUrl: e.target.value })} />
                 </div>
               </div>

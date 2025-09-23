@@ -12,7 +12,7 @@ interface FooterProps {
 export function Footer({ season }: FooterProps) {
   const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string }>({
     phone: '(555) 123-4567',
-    email: 'info@proseason.com',
+    email: 'info@example.com',
     address: 'Greater Metro Area',
   });
   const [services, setServices] = useState<Array<{ title: string }>>([]);
@@ -117,14 +117,9 @@ export function Footer({ season }: FooterProps) {
         
         <div className="flex flex-col lg:flex-row justify-between items-center">
           <p className="text-primary-foreground/60 text-sm">
-            © 2024 ProSeason. All rights reserved. • Professional property maintenance services.
+            © 2025 Jay's Blade and Snow Services Inc. All rights reserved. • Professional property maintenance services.
           </p>
-          <div className="flex space-x-8 text-sm text-primary-foreground/60 mt-4 lg:mt-0">
-            <a href="#" className="hover:text-primary-foreground transition-colors">Privacy</a>
-            <a href="#" className="hover:text-primary-foreground transition-colors">Terms</a>
-            <a href="#" className="hover:text-primary-foreground transition-colors">Insurance</a>
-            <a href="#" className="hover:text-primary-foreground transition-colors">Careers</a>
-          </div>
+        
         </div>
       </div>
     </footer>

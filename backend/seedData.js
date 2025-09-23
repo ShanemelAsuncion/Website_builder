@@ -113,11 +113,12 @@ export const initialContent = {
   ],
 
   contact: {
-    phone: '(555) 123-4567',
-    email: 'info@proseason.com',
-    address: 'Greater Metro Area',
+    phone: '(587) 987-6057',
+    email: 'janjcomp08@gmail.com',
+    address: 'Leduc, Alberta, Canada',
     hours: 'Mon-Fri: 7AM-6PM',
     weekendNote: 'Weekend emergency service',
-    facebook: 'https://facebook.com/proseason'
+    facebookUrl: 'https://www.facebook.com/jcatapiajrj',
+    facebookName: "Jay's Blade and Snow Services",
   }
 };
