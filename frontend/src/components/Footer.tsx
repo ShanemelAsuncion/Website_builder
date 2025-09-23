@@ -56,7 +56,7 @@ export function Footer({ season }: FooterProps) {
         <div className="grid lg:grid-cols-4 gap-12">
           <div className="lg:col-span-2">
             <div className="flex items-center space-x-2 mb-6">
-              <h3 className="text-3xl tracking-tight">ProSeason</h3>
+              <h3 className="text-3xl tracking-tight">Jay's Blade & Snow Services Inc</h3>
               <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse"></div>
             </div>
             <p className="text-primary-foreground/80 mb-6 text-lg leading-relaxed max-w-md">
@@ -73,10 +73,6 @@ export function Footer({ season }: FooterProps) {
                 15+ Years Experience
               </Badge>
             </div>
-            <Button onClick={scrollToContact} variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
-              Emergency Service
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
           </div>
 
           <div>

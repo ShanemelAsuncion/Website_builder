@@ -8,13 +8,13 @@ interface HeaderProps {
   season: 'summer' | 'winter';
   onSeasonToggle: () => void;
 }
-
 export function Header({ season, onSeasonToggle }: HeaderProps) {
   const scrollToContact = () => {
     const el = document.getElementById('contact');
     if (el) el.scrollIntoView({ behavior: 'smooth' });
   };
   const [phone, setPhone] = useState<string>("(555) 123-4567");
+  const [mobileOpen, setMobileOpen] = useState(false);
   useEffect(() => {
     (async () => {
       try {
@@ -35,7 +35,7 @@ export function Header({ season, onSeasonToggle }: HeaderProps) {
             <div className="relative">
               <h1 className="text-3xl tracking-tight">
                 <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">
-                  ProSeason
+                  Jay's Blade & Snow Services Inc
                 </span>
               </h1>
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full animate-pulse"></div>
@@ -87,12 +87,27 @@ export function Header({ season, onSeasonToggle }: HeaderProps) {
               Get Quote
             </Button>
             
-            <Button variant="outline" size="sm" className="lg:hidden">
+            <Button variant="outline" size="sm" className="lg:hidden" aria-expanded={mobileOpen} aria-controls="mobile-menu" onClick={() => setMobileOpen(v => !v)}>
               <Menu className="h-4 w-4" />
             </Button>
           </div>
         </div>
+        {/* Mobile dropdown */}
+        {mobileOpen && (
+          <div id="mobile-menu" className="lg:hidden mt-4 border rounded-xl bg-background shadow-md">
+            <div className="p-4 grid gap-2 justify-items-center">
+              <a href="#services" className="block w-full text-center py-2 rounded-md hover:bg-muted hover:text-primary" onClick={() => setMobileOpen(false)}>Services</a>
+              <a href="#work" className="block w-full text-center py-2 rounded-md hover:bg-muted hover:text-primary" onClick={() => setMobileOpen(false)}>Portfolio</a>
+              <a href="#process" className="block w-full text-center py-2 rounded-md hover:bg-muted hover:text-primary" onClick={() => setMobileOpen(false)}>Process</a>
+              <a href="#testimonials" className="block w-full text-center py-2 rounded-md hover:bg-muted hover:text-primary" onClick={() => setMobileOpen(false)}>Reviews</a>
+              <a href="#contact" className="block w-full text-center py-2 rounded-md hover:bg-muted hover:text-primary" onClick={() => { setMobileOpen(false); scrollToContact(); }}>Contact</a>
+              <Button onClick={() => { setMobileOpen(false); scrollToContact(); }} className="w-full bg-primary hover:bg-primary/90">Get Quote</Button>
+            </div>
+          </div>
+        )}
       </div>
     </header>
   );
 }
+
+export default Header;

@@ -96,6 +96,15 @@
     box-shadow: 0 6px 14px rgba(0,0,0,0.10);
   }
 
+  /* --- Responsive visibility helpers (admin) --- */
+  .admin-mobile-only { display: block; }
+  .admin-desktop-only { display: none; }
+  /* Match homepage breakpoint behavior (lg: 1024px) */
+  @media (min-width: 1024px) {
+    .admin-mobile-only { display: none; }
+    .admin-desktop-only { display: flex; }
+  }
+
   /* --- Mobile helpers --- */
   /* Hide horizontal scrollbar on small-screen TabsList scroller */
   .no-scrollbar::-webkit-scrollbar { display: none; }

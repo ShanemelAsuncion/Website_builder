@@ -183,11 +183,6 @@ export function Work({ season }: WorkProps) {
                       </div>
                     </div>
                   </div>
-                  
-                  <Button className="w-fit group">
-                    View Case Study
-                    <ExternalLink className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                  </Button>
                 </div>
               </div>
             </div>
@@ -252,23 +247,30 @@ export function Work({ season }: WorkProps) {
           initial={{ opacity: 0, y: 30 }}
           whileInView={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.4 }}
-          className="text-center bg-primary rounded-3xl p-12 text-primary-foreground"
+          className="text-center bg-primary rounded-3xl p-8 text-primary-foreground" 
         >
-          <h3 className="text-3xl mb-4 tracking-tight">Want to view more of our work?</h3>
-          <p className="text-primary-foreground/80 mb-8 text-lg max-w-2xl mx-auto">
+          <h3 className="text-3xl mb-2 tracking-tight">Want to view more of our work?</h3> 
+          
+          <p className="text-primary-foreground/80 mb-4 text-lg max-w-2xl mx-auto"> 
             Explore more recent projects and updates on our Facebook page.
           </p>
+
           {facebookUrl && (
             <div className="flex justify-center">
               <a href={facebookUrl} target="_blank" rel="noopener noreferrer">
-                <Button size="lg" variant="outline" className="border-primary-foreground/30 text-primary-foreground hover:bg-primary-foreground/10">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="bg-primary-foreground/30 border-white/30 text-black hover:text-white hover:bg-primary-foreground/10"
+                >
                   View more on Facebook
-                  <ExternalLink className="ml-2 h-4 w-4" />
+                  <ExternalLink className="ml-2 h-4 w-4" /> 
                 </Button>
               </a>
             </div>
           )}
         </motion.div>
+
       </div>
     </section>
   );

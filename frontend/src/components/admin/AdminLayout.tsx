@@ -109,16 +109,6 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                   Preview Site
                 </Button>
 
-                {/* Save Changes if provided by child */}
-                <Button
-                  onClick={() => onSave && onSave()}
-                  disabled={!hasUnsavedChanges || !onSave}
-                  className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Save className="w-4 h-4 mr-2" />
-                  Save Changes
-                </Button>
-
                 <Button variant="outline" onClick={handleLogout}>
                   <LogOut className="w-4 h-4 mr-2" />
                   Logout

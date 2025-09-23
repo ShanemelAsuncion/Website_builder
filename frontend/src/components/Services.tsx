@@ -56,6 +56,11 @@ export function Services({ season }: ServicesProps) {
   const [summerData, setSummerData] = useState(summerServices);
   const [winterData, setWinterData] = useState(winterServices);
 
+  const scrollToContact = () => {
+    const el = document.getElementById('contact');
+    if (el) el.scrollIntoView({ behavior: 'smooth' });
+  };
+
   useEffect(() => {
     (async () => {
       try {
@@ -177,10 +182,6 @@ export function Services({ season }: ServicesProps) {
                   </div>
                 )}
 
-                <Button className="w-full group">
-                  Get Started
-                  <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-                </Button>
               </div>
             </motion.div>
             );
@@ -198,7 +199,7 @@ export function Services({ season }: ServicesProps) {
             <p className="text-muted-foreground mb-6">
               Every property is unique. Let's discuss your specific needs and create a tailored maintenance plan.
             </p>
-            <Button size="lg" variant="outline">
+            <Button onClick={scrollToContact} size="lg" variant="outline">
               Schedule Consultation
             </Button>
           </div>

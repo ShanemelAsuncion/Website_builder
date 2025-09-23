@@ -7,6 +7,7 @@ import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
 import { motion } from 'framer-motion';
 import { 
@@ -33,7 +34,7 @@ interface DashboardContextType {
 }
 
 type PortfolioItem = { id: string; title: string; description: string; imageUrl: string; location: string; duration: string; category?: string; featured?: boolean };
-type ServiceItem = { id: string; title: string; description: string; price: string };
+type ServiceItem = { id: string; title: string; description: string; price: string; features?: string[] };
 type TestimonialItem = { id: string; name: string; role: string; rating: number; comment: string };
 
 // The Dashboard Component
@@ -253,7 +254,7 @@ export const Dashboard = () => {
   const SeasonIcon = season === 'summer' ? Sun : Snowflake;
 
   return (
-    <div className="container mx-auto px-6 py-8" data-season={season}>
+    <div className="container mx-auto px-6 py-8 p-8" data-season={season}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
         <TabsList className="w-full overflow-x-auto no-scrollbar">
           <TabsTrigger value="hero"><FileText className="w-4 h-4 mr-2" />Hero</TabsTrigger>
@@ -324,6 +325,53 @@ export const Dashboard = () => {
                   <Input value={service.description} onChange={e => updateService(service.id, 'description', e.target.value)} />
                   <Label>Price</Label>
                   <Input value={service.price} onChange={e => updateService(service.id, 'price', e.target.value)} />
+                  {/* Features (optional) */}
+                  <div className="pt-2 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <Label>Features (optional)</Label>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const next = [...(service.features || []), ''];
+                          updateService(service.id, 'features', next as any);
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-1" /> Add Feature
+                      </Button>
+                    </div>
+                    {(service.features || []).length === 0 && (
+                      <p className="text-sm text-muted-foreground">No features added.</p>
+                    )}
+                    <div className="space-y-2">
+                      {(service.features || []).map((feat, idx) => (
+                        <div key={idx} className="flex items-center gap-2">
+                          <Input
+                            value={feat}
+                            placeholder={`Feature #${idx + 1}`}
+                            onChange={(e) => {
+                              const next = [...(service.features || [])];
+                              next[idx] = e.target.value;
+                              updateService(service.id, 'features', next as any);
+                            }}
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => {
+                              const next = [...(service.features || [])];
+                              next.splice(idx, 1);
+                              updateService(service.id, 'features', next as any);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               ))}
             </CardContent>
@@ -331,7 +379,7 @@ export const Dashboard = () => {
         </TabsContent>
 
         {/* Portfolio Section */}
-        <TabsContent value="portfolio">
+        <TabsContent value="portfolio" className="p-4 sm:p-6">
           <Card>
             <CardHeader>
               <CardTitle>Portfolio</CardTitle>
