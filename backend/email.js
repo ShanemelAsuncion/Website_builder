@@ -119,25 +119,152 @@ export async function sendContactEmail({ name, email, phone, service, message })
   }
 }
 
-export async function sendVerificationEmail({ to, verifyUrl }) {
-  const html = `
-    <html>
-      <body style="font-family: Arial, sans-serif; line-height:1.6; color:#333;">
-        <h2>Email Change Verification</h2>
-        <p>We received a request to change the admin email for your account.</p>
-        <p>Click the link below to verify your new email address:</p>
-        <p><a href="${verifyUrl}" style="background:#2563eb; color:#fff; padding:10px 16px; border-radius:6px; text-decoration:none;">Verify Email</a></p>
-        <p>If the button doesn't work, copy and paste this URL into your browser:</p>
-        <p style="word-break:break-all;"><a href="${verifyUrl}">${verifyUrl}</a></p>
-        <p>This link will expire in 24 hours. If you did not request this change, you can ignore this email.</p>
-      </body>
-    </html>
-  `;
+export async function sendVerificationEmail({ to, verifyUrl, userName, brandName, supportEmail, siteUrl } = {}) {
+  // Derive sensible defaults if not provided
+  const derivedBrand = brandName || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  const derivedSupport = supportEmail || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || 'support@jaysbladeandsnow.com';
+  const derivedSiteUrl = siteUrl || process.env.SITE_URL || (verifyUrl ? new URL(verifyUrl).origin : 'http://localhost:3000');
+  const derivedUserName = userName || (to ? String(to).split('@')[0] : 'Admin');
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email - ${derivedBrand}</title>
+    <!--[if mso]>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+    <style type="text/css">
+        @media only screen and (max-width: 600px) {
+            .email-container {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            .mobile-padding {
+                padding: 25px 15px !important;
+            }
+            .mobile-text {
+                font-size: 14px !important;
+            }
+            .mobile-header {
+                font-size: 24px !important;
+            }
+            .mobile-button {
+                padding: 12px 24px !important;
+                font-size: 14px !important;
+            }
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333333; background-color: #f9f9f9;">
+    <div style="padding: 20px;">
+        <table cellpadding="0" cellspacing="0" border="0" class="email-container" style="width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <!-- Header -->
+            <tr>
+                <td style="background: linear-gradient(135deg, #2563eb 0%, #059669 100%); padding: 30px 20px; text-align: center;">
+                    <div style="display: inline-block; background-color: rgba(255, 255, 255, 0.1); border-radius: 50px; padding: 15px 25px; margin-bottom: 15px;">
+                        <span style="font-size: 32px; color: #ffffff; font-weight: bold; letter-spacing: 1px;">❄️🌿</span>
+                    </div>
+                    <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);" class="mobile-header">
+                        ${derivedBrand}
+                    </h1>
+                    <p style="color: rgba(255, 255, 255, 0.9); font-size: 16px; margin: 8px 0 0 0; font-weight: 300;">
+                        Professional Landscaping • Reliable Snow Removal
+                    </p>
+                </td>
+            </tr>
+
+            <!-- Main Content -->
+            <tr>
+                <td style="padding: 40px 30px;" class="mobile-padding">
+                    <!-- Greeting -->
+                    <div style="margin-bottom: 30px;">
+                        <h2 style="color: #1e40af; font-size: 24px; font-weight: bold; margin: 0 0 15px 0;">
+                            Hello ${derivedUserName},
+                        </h2>
+                        <p style="color: #475569; font-size: 18px; line-height: 1.6; margin: 0;" class="mobile-text">
+                            Please verify your email to activate your account.
+                        </p>
+                    </div>
+
+                    <!-- Verification Card -->
+                    <div style="background-color: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; padding: 30px; text-align: center; margin-bottom: 30px;">
+                        <div style="margin-bottom: 25px;">
+                            <div style="display: inline-block; background-color: #dcfce7; border-radius: 50px; padding: 15px; margin-bottom: 15px;">
+                                <span style="font-size: 32px; color: #059669;">✉️</span>
+                            </div>
+                            <h3 style="color: #374151; font-size: 20px; font-weight: bold; margin: 0 0 10px 0;">
+                                Verify Your Email Address
+                            </h3>
+                            <p style="color: #6b7280; font-size: 16px; margin: 0; line-height: 1.5;" class="mobile-text">
+                                Click the button below to confirm your email address and complete your account setup.
+                            </p>
+                        </div>
+
+                        <!-- Verification Button -->
+                        <a href="${derivedSiteUrl}/login" style="display: inline-block; background-color: #2563eb; color: #ffffff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.25);" class="mobile-button">
+                            ✅ Verify Email
+                        </a>
+                    </div>
+
+                    <!-- Additional Info -->
+                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                        <h4 style="color: #9a3412; font-size: 16px; font-weight: bold; margin: 0 0 10px 0;">
+                            🔒 Security Notice
+                        </h4>
+                        <p style="color: #7c2d12; font-size: 14px; line-height: 1.5; margin: 0;" class="mobile-text">
+                            If you did not create an account with ${derivedBrand}, please ignore this email. 
+                            This verification link will expire in 24 hours for your security.
+                        </p>
+                    </div>
+
+                    <!-- Contact Info -->
+                    <div style="text-align: center; padding: 20px 0;">
+                        <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px 0;" class="mobile-text">
+                            Need help? Contact us at:
+                        </p>
+                        <a href="mailto:${derivedSupport}" style="color: #2563eb; text-decoration: none; font-size: 14px; font-weight: 500;" class="mobile-text">
+                            ${derivedSupport}
+                        </a>
+                    </div>
+                </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+                <td style="background-color: #f3f4f6; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #6b7280; font-size: 12px; margin: 0; line-height: 1.4;">
+                        This email was sent to verify your account with ${derivedBrand}.
+                    </p>
+                    
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #d1d5db;">
+                        <p style="color: #9ca3af; font-size: 11px; margin: 0;">
+                            ${derivedBrand} • Professional • Reliable • Trusted
+                        </p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>`;
+
+  const subject = `Verify your email - ${derivedBrand}`;
+  const text = `Hello ${derivedUserName},\n\nPlease verify your email to activate your account.\n\nVerification link: ${verifyUrl}\n\nIf you did not request this, you can ignore this email.\n\n— ${derivedBrand}`;
+
   const mailOptions = {
-    from: `Website Admin <${process.env.EMAIL_USER}>`,
+    from: `${derivedBrand} <${process.env.EMAIL_USER}>`,
     to,
-    subject: 'Verify your new admin email',
+    subject,
     html,
+    text,
   };
   try {
     const info = await transporter.sendMail(mailOptions);
