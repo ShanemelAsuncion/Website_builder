@@ -14,6 +14,7 @@ import { Dashboard } from './components/admin/Dashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { contentApi } from './services/api';
+import { SeasonalTutorial } from './components/SeasonalTutorial';
 
 function MainContent({ season, toggleSeason }: { season: 'summer' | 'winter'; toggleSeason: () => void }) {
   return (
@@ -26,6 +27,8 @@ function MainContent({ season, toggleSeason }: { season: 'summer' | 'winter'; to
         className="min-h-screen"
       >
         <Header season={season} onSeasonToggle={toggleSeason} />
+        {/* Seasonal tutorial: shown once per day on homepage */}
+        <SeasonalTutorial season={season} onSeasonToggle={toggleSeason} />
         <Hero season={season} />
         <Services season={season} />
         <Work season={season} />

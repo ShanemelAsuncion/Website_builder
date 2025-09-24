@@ -67,7 +67,7 @@ export function SeasonalTutorial({ season, onSeasonToggle }: SeasonalTutorialPro
             transition={{ type: "spring", duration: 0.5 }}
             className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 w-full max-w-md mx-4"
           >
-            <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl overflow-hidden">
+            <Card className="border-0 shadow-2xl bg-background/95 bg-card overflow-hidden">
               {/* Header Gradient */}
               <div className={`h-2 bg-gradient-to-r ${gradientColors}`} />
 
