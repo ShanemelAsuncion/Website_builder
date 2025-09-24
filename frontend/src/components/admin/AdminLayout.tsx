@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Sun, Snowflake, Eye, LogOut, Edit3, Save } from 'lucide-react';
+import { contentApi } from '../../services/api';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { Badge } from '../ui/badge';
@@ -34,10 +35,47 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   // Header control state provided by children (e.g., Dashboard)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [onSave, setOnSave] = useState<(() => void) | undefined>(undefined);
+  const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
 
   const toggleSeason = () => {
     setSeason(prev => prev === 'summer' ? 'winter' : 'summer');
   };
+
+  // Load branding and subscribe to updates
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const bItem = items.find(i => i.key === 'branding');
+        if (bItem?.value) {
+          try { setBranding(JSON.parse(bItem.value)); } catch {}
+        }
+      } catch {}
+    })();
+    try {
+      const cached = localStorage.getItem('cache:branding');
+      if (cached) setBranding(JSON.parse(cached));
+    } catch {}
+    const refreshFromCache = () => {
+      try {
+        const cached = localStorage.getItem('cache:branding');
+        if (cached) setBranding(JSON.parse(cached));
+      } catch {}
+    };
+    const onUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.persisted) refreshFromCache();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cache:branding') refreshFromCache();
+    };
+    window.addEventListener('content-updated', onUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('content-updated', onUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   const handleLogout = () => {
     localStorage.removeItem('token');
@@ -78,11 +116,15 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2 flex-wrap justify-end">
                 <div className="flex items-center space-x-3">
-                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-                    <Edit3 className="w-5 h-5 text-primary-foreground" />
+                  <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center overflow-hidden">
+                    {branding.logoUrl ? (
+                      <img src={branding.logoUrl} alt={branding.name || 'Logo'} className="w-8 h-8 object-contain bg-white" />
+                    ) : (
+                      <Edit3 className="w-5 h-5 text-primary-foreground" />
+                    )}
                   </div>
                   <div>
-                    <h1 className="text-xl tracking-tight">BladeSnow Pro Admin</h1>
+                    <h1 className="text-xl tracking-tight">{branding.name || 'Admin'} Admin</h1>
                     <p className="text-sm text-muted-foreground">Content Management System</p>
                   </div>
                 </div>

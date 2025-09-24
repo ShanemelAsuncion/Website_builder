@@ -118,3 +118,33 @@ export async function sendContactEmail({ name, email, phone, service, message })
     throw new Error('Failed to send email');
   }
 }
+
+export async function sendVerificationEmail({ to, verifyUrl }) {
+  const html = `
+    <html>
+      <body style="font-family: Arial, sans-serif; line-height:1.6; color:#333;">
+        <h2>Email Change Verification</h2>
+        <p>We received a request to change the admin email for your account.</p>
+        <p>Click the link below to verify your new email address:</p>
+        <p><a href="${verifyUrl}" style="background:#2563eb; color:#fff; padding:10px 16px; border-radius:6px; text-decoration:none;">Verify Email</a></p>
+        <p>If the button doesn't work, copy and paste this URL into your browser:</p>
+        <p style="word-break:break-all;"><a href="${verifyUrl}">${verifyUrl}</a></p>
+        <p>This link will expire in 24 hours. If you did not request this change, you can ignore this email.</p>
+      </body>
+    </html>
+  `;
+  const mailOptions = {
+    from: `Website Admin <${process.env.EMAIL_USER}>`,
+    to,
+    subject: 'Verify your new admin email',
+    html,
+  };
+  try {
+    const info = await transporter.sendMail(mailOptions);
+    console.log('Verification email sent:', info.response);
+    return info;
+  } catch (error) {
+    console.error('Error sending verification email:', error);
+    throw new Error('Failed to send verification email');
+  }
+}

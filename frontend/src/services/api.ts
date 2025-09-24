@@ -50,9 +50,17 @@ export const authApi = {
     const response = await api.get('/auth/me');
     return response.data;
   },
+  getFullProfile: async () => {
+    const response = await api.get('/auth/profile');
+    return response.data as { user: { id: number; email: string; isMaster: number } };
+  },
   changePassword: async (currentPassword: string, newPassword: string) => {
     const response = await api.post('/auth/change-password', { currentPassword, newPassword });
     return response.data;
+  },
+  requestEmailChange: async (newEmail: string) => {
+    const response = await api.post('/auth/request-email-change', { newEmail });
+    return response.data as { message: string };
   },
   upload: async (file: File) => {
     const formData = new FormData();
@@ -83,6 +91,25 @@ export const contentApi = {
   },
   reset: async () => {
     await api.post('/content/reset');
+  }
+};
+
+// Admin (master only)
+export const adminApi = {
+  listUsers: async () => {
+    const response = await api.get('/admin/users');
+    return response.data as Array<{ id: number; email: string; isMaster: number; createdAt: string }>;
+  },
+  createUser: async (payload: { email: string; password: string; isMaster?: boolean }) => {
+    const response = await api.post('/admin/users', payload);
+    return response.data as { id: number; email: string; isMaster: boolean };
+  },
+  updateUser: async (id: number, payload: { email?: string; password?: string; isMaster?: boolean }) => {
+    const response = await api.put(`/admin/users/${id}`, payload);
+    return response.data as { id: number; email: string; isMaster: number; createdAt: string };
+  },
+  deleteUser: async (id: number) => {
+    await api.delete(`/admin/users/${id}`);
   }
 };
 

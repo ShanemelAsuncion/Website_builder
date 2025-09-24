@@ -138,6 +138,9 @@ export function Services({ season }: ServicesProps) {
           {services.map((service, index) => {
             const IconComp = season === 'summer' ? Leaf : Snowflake;
             const features: string[] = Array.isArray((service as any).features) ? (service as any).features : [];
+            const imageSrc = (service as any).image && (service as any).image.length > 0
+              ? (service as any).image
+              : `https://source.unsplash.com/1080x720/?${encodeURIComponent((service as any).title || 'landscaping')}`;
             return (
             <motion.div
               key={index}
@@ -148,7 +151,7 @@ export function Services({ season }: ServicesProps) {
             >
               <div className="relative h-64 overflow-hidden">
                 <ImageWithFallback
-                  src={service.image}
+                  src={imageSrc}
                   alt={service.title}
                   className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700"
                 />

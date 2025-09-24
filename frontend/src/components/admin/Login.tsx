@@ -3,11 +3,11 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { authApi } from '../../services/api';
+import { authApi, contentApi } from '../../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { motion } from 'framer-motion';
-import { Eye, EyeOff, Shield, Snowflake, Sun, ArrowLeft, Lock, User } from 'lucide-react';
+import { Shield, Snowflake, Sun, ArrowLeft, Lock, User } from 'lucide-react';
 
 interface LoginProps {
   season?: 'summer' | 'winter';
@@ -22,6 +22,7 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
     password: ''
   });
   const [error, setError] = useState('');
+  const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/admin/dashboard';
@@ -33,6 +34,42 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
       navigate(from, { replace: true });
     }
   }, [navigate, from]);
+
+  // Load Branding (API + Cache) and subscribe to updates
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const bItem = items.find(i => i.key === 'branding');
+        if (bItem?.value) {
+          try { setBranding(JSON.parse(bItem.value)); } catch {}
+        }
+      } catch {}
+    })();
+    try {
+      const cachedBranding = localStorage.getItem('cache:branding');
+      if (cachedBranding) setBranding(JSON.parse(cachedBranding));
+    } catch {}
+    const refreshFromCache = () => {
+      try {
+        const cached = localStorage.getItem('cache:branding');
+        if (cached) setBranding(JSON.parse(cached));
+      } catch {}
+    };
+    const onUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.persisted) refreshFromCache();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cache:branding') refreshFromCache();
+    };
+    window.addEventListener('content-updated', onUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('content-updated', onUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   // Define the expected response type from the login API
   interface LoginResponse {
@@ -138,15 +175,19 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, duration: 0.3 }}
-              className="mx-auto w-16 h-16 bg-primary rounded-2xl flex items-center justify-center"
+              className="mx-auto w-16 h-16 bg-primary rounded-2xl flex items-center justify-center overflow-hidden"
             >
-              <Shield className="w-8 h-8 text-primary-foreground" />
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.name || 'Company Logo'} className="w-16 h-16 object-contain bg-white rounded-2xl" />
+              ) : (
+                <Shield className="w-8 h-8 text-primary-foreground" />
+              )}
             </motion.div>
 
             {/* Brand */}
             <div className="space-y-2">
               <Badge variant="outline" className="mx-auto">
-                BladeSnow Pro Admin
+                {branding.name || 'Admin'} Admin
               </Badge>
               <CardTitle className="text-2xl tracking-tight">
                 Admin Portal
@@ -205,19 +246,7 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
                     className="h-12 bg-input-background border-border/50 focus:border-primary transition-colors pr-12"
                     required
                   />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 h-8 w-8 p-0 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="w-4 h-4 text-muted-foreground" />
-                    ) : (
-                      <Eye className="w-4 h-4 text-muted-foreground" />
-                    )}
-                  </Button>
+            
                 </div>
               </motion.div>
 

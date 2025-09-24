@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Label } from "./ui/label";
@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Badge } from "./ui/badge";
 import { motion } from "motion/react";
 import { Eye, EyeOff, Shield, Snowflake, Sun, ArrowLeft, Lock, User } from "lucide-react";
+import { contentApi } from "../services/api";
 
 interface AdminLoginProps {
   season: 'summer' | 'winter';
@@ -21,6 +22,43 @@ export function AdminLogin({ season, onSeasonToggle, onBackToSite }: AdminLoginP
     password: ''
   });
   const [error, setError] = useState('');
+  const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const bItem = items.find(i => i.key === 'branding');
+        if (bItem?.value) {
+          try { setBranding(JSON.parse(bItem.value)); } catch {}
+        }
+      } catch {}
+    })();
+    // initialize from cache
+    try {
+      const cachedBranding = localStorage.getItem('cache:branding');
+      if (cachedBranding) setBranding(JSON.parse(cachedBranding));
+    } catch {}
+    const refreshFromCache = () => {
+      try {
+        const cachedBranding = localStorage.getItem('cache:branding');
+        if (cachedBranding) setBranding(JSON.parse(cachedBranding));
+      } catch {}
+    };
+    const onUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.persisted) refreshFromCache();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cache:branding') refreshFromCache();
+    };
+    window.addEventListener('content-updated', onUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('content-updated', onUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -108,15 +146,19 @@ export function AdminLogin({ season, onSeasonToggle, onBackToSite }: AdminLoginP
               initial={{ scale: 0.8 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.2, duration: 0.3 }}
-              className="mx-auto w-16 h-16 bg-primary rounded-2xl flex items-center justify-center"
+              className="mx-auto w-16 h-16 bg-primary rounded-2xl flex items-center justify-center overflow-hidden"
             >
-              <Shield className="w-8 h-8 text-primary-foreground" />
+              {branding.logoUrl ? (
+                <img src={branding.logoUrl} alt={branding.name || 'Company Logo'} className="w-16 h-16 object-contain bg-white rounded-2xl" />
+              ) : (
+                <Shield className="w-8 h-8 text-primary-foreground" />
+              )}
             </motion.div>
 
             {/* Brand */}
             <div className="space-y-2">
               <Badge variant="outline" className="mx-auto">
-                BladeSnow Pro Admin
+                {branding.name || 'Admin'} Admin
               </Badge>
               <CardTitle className="text-2xl tracking-tight">
                 Admin Portal
