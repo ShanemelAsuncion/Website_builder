@@ -7,7 +7,7 @@ import { authApi, contentApi } from '../../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { motion } from 'framer-motion';
-import { Shield, Snowflake, Sun, ArrowLeft, Lock, User } from 'lucide-react';
+import { Shield, Snowflake, Sun, ArrowLeft, Lock, User, X } from 'lucide-react';
 
 interface LoginProps {
   season?: 'summer' | 'winter';
@@ -22,6 +22,9 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
     password: ''
   });
   const [error, setError] = useState('');
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotStatus, setForgotStatus] = useState<{ type: 'idle' | 'success' | 'error'; message?: string }>({ type: 'idle' });
   const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
   const navigate = useNavigate();
   const location = useLocation();
@@ -70,6 +73,19 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
       window.removeEventListener('storage', onStorage);
     };
   }, []);
+
+  // Forgot password submit handler
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotStatus({ type: 'idle' });
+    try {
+      const resp = await authApi.forgotPassword(forgotEmail);
+      setForgotStatus({ type: 'success', message: resp?.message || 'If an account exists, a reset link was sent.' });
+    } catch (err) {
+      const msg = (err as any)?.response?.data?.error || 'Failed to send reset email. Please try again later.';
+      setForgotStatus({ type: 'error', message: msg });
+    }
+  };
 
   // Define the expected response type from the login API
   interface LoginResponse {
@@ -246,7 +262,6 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
                     className="h-12 bg-input-background border-border/50 focus:border-primary transition-colors pr-12"
                     required
                   />
-            
                 </div>
               </motion.div>
 
@@ -286,8 +301,77 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
                   )}
                 </Button>
               </motion.div>
+
+               {/* Forgot Password Link */}
+              <div className="text-center">
+                <Button type="button" variant="link" className="p-0 h-auto text-sm" onClick={() => setForgotOpen(true)}>
+                  Forgot Password?
+                </Button>
+              </div>
             </form>
 
+            {/* Forgot Password Modal (outside of form to avoid nested form issues) */}
+            {forgotOpen && (
+              <>
+                {/* Backdrop */}
+                <motion.button
+                  type="button"
+                  aria-label="Close forgot password"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setForgotOpen(false)}
+                  className="fixed inset-0 z-[99990] bg-black/50 backdrop-blur-sm"
+                />
+                {/* Centered Modal */}
+                <motion.div
+                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                  className="fixed z-[99991] top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md px-4"
+                >
+                  <Card className="bg-background border shadow-2xl relative">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setForgotOpen(false)}
+                      className="absolute top-4 right-4 h-8 w-8 p-0"
+                      aria-label="Close"
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                    <CardHeader>
+                      <CardTitle>Forgot Password</CardTitle>
+                      <CardDescription>Enter your account email to receive a password reset link.</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <form onSubmit={handleForgotSubmit} className="space-y-4">
+                        <div className="space-y-2">
+                          <Label htmlFor="forgot-email">Email</Label>
+                          <Input
+                            id="forgot-email"
+                            type="email"
+                            value={forgotEmail}
+                            onChange={(e) => setForgotEmail(e.target.value)}
+                            placeholder="you@example.com"
+                            required
+                          />
+                        </div>
+                        {forgotStatus.type !== 'idle' && (
+                          <div className={`${forgotStatus.type === 'success' ? 'text-green-700 bg-green-50 border-green-200' : 'text-destructive bg-destructive/10 border-destructive/20'} text-sm border rounded-md p-2`}>
+                            {forgotStatus.message}
+                          </div>
+                        )}
+                        <div>
+                          <Button type="submit" className="w-full">Send Reset Email</Button>
+                        </div>
+                      </form>
+                    </CardContent>
+                  </Card>
+                </motion.div>
+              </>
+            )}
 
             {/* Security Notice */}
             <motion.div

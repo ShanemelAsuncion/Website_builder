@@ -15,6 +15,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminLayout } from './components/admin/AdminLayout';
 import { contentApi } from './services/api';
 import { SeasonalTutorial } from './components/SeasonalTutorial';
+import ResetPassword from './components/ResetPassword';
 
 function MainContent({ season, toggleSeason }: { season: 'summer' | 'winter'; toggleSeason: () => void }) {
   return (
@@ -132,6 +133,7 @@ export default function App() {
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<MainContent season={season} toggleSeason={toggleSeason} />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         
         {/* Admin Routes */}
         <Route 

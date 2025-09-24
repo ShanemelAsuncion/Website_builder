@@ -14,7 +14,7 @@ import bodyParser from 'body-parser';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { initialContent } from './seedData.js';
-import { sendContactEmail, sendVerificationEmail } from './email.js';
+import { sendContactEmail, sendVerificationEmail, sendPasswordResetEmail } from './email.js';
 
 // Configure dotenv
 dotenv.config();
@@ -36,6 +36,21 @@ console.log('Server starting with JWT configuration:', {
   JWT_SECRET: JWT_SECRET ? '*** (set)' : 'NOT SET!',
   JWT_EXPIRES_IN
 });
+
+// Redirect helper for legacy emails that point to backend host
+app.get('/reset-password', (req, res) => {
+  try {
+    const origin = process.env.SITE_URL || 'http://localhost:3000';
+    const search = req.url.includes('?') ? req.url.substring(req.url.indexOf('?')) : '';
+    const target = `${origin.replace(/\/$/, '')}/reset-password${search}`;
+    return res.redirect(302, target);
+  } catch (e) {
+    console.error('reset-password redirect error:', e);
+    return res.status(500).send('Redirect failed');
+  }
+});
+
+// (forgot-password route will be defined after middleware)
 
 // (email change routes are defined after auth routes below)
 
@@ -64,6 +79,114 @@ app.use(cors({
 }));
 
 app.use(bodyParser.json());
+
+// Forgot Password: send reset email (after middleware so CORS/JSON parsing apply)
+app.post('/api/auth/forgot-password', async (req, res) => {
+  try {
+    const { email } = req.body || {};
+    if (!email) return res.status(400).json({ error: 'Email is required' });
+
+    // Optional branding lookup from content table
+    let brandName, logoUrl;
+    try {
+      const row = await db.get("SELECT value FROM content WHERE key = 'branding'");
+      if (row?.value) {
+        const parsed = JSON.parse(row.value);
+        brandName = parsed?.name;
+        logoUrl = parsed?.logoUrl;
+      }
+    } catch {}
+
+    // Always respond generically to avoid enumeration
+    const genericResponse = { message: 'If an account exists for this email, a reset link has been sent.' };
+
+    // Find user
+    const user = await db.get('SELECT id, email FROM users WHERE email = ?', [email]);
+    if (!user) {
+      // Still respond OK without indicating existence
+      try {
+        const origin = req.headers.origin || process.env.SITE_URL || 'http://localhost:3000';
+        await sendPasswordResetEmail({
+          to: email,
+          userName: email.split('@')[0],
+          brandName,
+          supportEmail: process.env.SUPPORT_EMAIL,
+          siteUrl: origin,
+          logoUrl,
+        });
+      } catch (e) {
+        console.warn('Attempted to send reset email for non-existing user:', e.message);
+      }
+      return res.json(genericResponse);
+    }
+
+    // Create a short-lived token (e.g., 1 hour)
+    const token = jwt.sign({ userId: user.id, purpose: 'password-reset' }, JWT_SECRET, { expiresIn: '1h' });
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    try {
+      // Upsert: delete existing tokens for user to keep only latest
+      await db.run('DELETE FROM password_reset_tokens WHERE userId = ?', [user.id]);
+    } catch {}
+    await db.run('INSERT INTO password_reset_tokens (userId, token, expiresAt) VALUES (?, ?, ?)', [user.id, token, expiresAt]);
+
+    const origin = req.headers.origin || process.env.SITE_URL || 'http://localhost:3000';
+    const resetUrl = `${origin.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
+
+    // Send email
+    try {
+      await sendPasswordResetEmail({
+        to: email,
+        userName: email.split('@')[0],
+        brandName,
+        supportEmail: process.env.SUPPORT_EMAIL,
+        siteUrl: origin,
+        logoUrl,
+        resetUrl,
+      });
+    } catch (e) {
+      console.warn('Failed to send password reset email (continuing):', e.message);
+    }
+
+    return res.json(genericResponse);
+  } catch (e) {
+    console.error('forgot-password error:', e);
+    return res.status(500).json({ error: 'Failed to process request' });
+  }
+});
+
+// Reset password: apply new password using a valid token
+app.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body || {};
+    if (!token || !newPassword) return res.status(400).json({ error: 'Token and newPassword are required' });
+
+    // Verify token signature
+    let payload;
+    try {
+      payload = jwt.verify(token, JWT_SECRET);
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid or expired token' });
+    }
+    if (payload.purpose !== 'password-reset') return res.status(400).json({ error: 'Invalid token purpose' });
+
+    // Ensure token exists in DB and not expired
+    const row = await db.get('SELECT * FROM password_reset_tokens WHERE token = ?', [token]);
+    if (!row) return res.status(400).json({ error: 'Invalid or used token' });
+    if (new Date(row.expiresAt) < new Date()) return res.status(400).json({ error: 'Token expired' });
+
+    // Update user password
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await db.run('UPDATE users SET password = ? WHERE id = ?', [hashed, row.userId]);
+
+    // Invalidate token
+    await db.run('DELETE FROM password_reset_tokens WHERE id = ?', [row.id]);
+
+    return res.json({ message: 'Password has been reset successfully.' });
+  } catch (e) {
+    console.error('reset-password error:', e);
+    return res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
 
 // Static hosting for uploaded files
 const uploadsDir = path.join(__dirname, 'uploads');
@@ -142,6 +265,18 @@ async function initializeDatabase() {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         userId INTEGER NOT NULL,
         newEmail TEXT NOT NULL,
+        token TEXT UNIQUE NOT NULL,
+        expiresAt DATETIME NOT NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (userId) REFERENCES users(id)
+      )
+    `);
+
+    // Ensure password reset tokens table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        userId INTEGER NOT NULL,
         token TEXT UNIQUE NOT NULL,
         expiresAt DATETIME NOT NULL,
         createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
