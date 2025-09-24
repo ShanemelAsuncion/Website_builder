@@ -10,11 +10,11 @@ import { motion } from 'framer-motion';
 import { Eye, EyeOff, Shield, Snowflake, Sun, ArrowLeft, Lock, User } from 'lucide-react';
 
 interface LoginProps {
-  season: 'summer' | 'winter';
-  onSeasonToggle: () => void;
+  season?: 'summer' | 'winter';
+  onSeasonToggle?: () => void;
 }
 
-export const Login = ({ season, onSeasonToggle }: LoginProps) => {
+export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginProps) => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [credentials, setCredentials] = useState({
