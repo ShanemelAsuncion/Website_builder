@@ -135,17 +135,44 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
       </motion.div>
 
       {/* Login Card */}
-      <motion.div className="w-full max-w-md" initial={{ opacity: 0, y: 40, scale: 0.95 }} animate={{ opacity: 1, y: 0, scale: 1 }} transition={{ duration: 0.5 }}>
+      <motion.div
+        className="w-full max-w-md"
+        initial={{ opacity: 0, y: 40, scale: 0.95 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        transition={{ duration: 0.5 }}
+      >
         <Card className="border-0 shadow-2xl bg-background/95 backdrop-blur-xl">
           <CardHeader className="text-center space-y-4 pb-8">
-            <motion.div className="mx-auto w-16 h-16 bg-primary rounded-2xl flex items-center justify-center overflow-hidden">
+            {/* Logo with motion */}
+            <motion.div
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.2, duration: 0.3 }}
+              className="mx-auto w-16 h-16 bg-primary rounded-2xl flex items-center justify-center overflow-hidden"
+            >
               {branding.logoUrl ? (
-                <img src={branding.logoUrl} alt={branding.name || 'Company Logo'} className="w-16 h-16 object-contain bg-white rounded-2xl" />
-              ) : <Shield className="w-8 h-8 text-primary-foreground" />}
+                <img
+                  src={branding.logoUrl}
+                  alt={branding.name || 'Company Logo'}
+                  className="w-16 h-16 object-contain bg-white rounded-2xl"
+                />
+              ) : (
+                <Shield className="w-8 h-8 text-primary-foreground" />
+              )}
             </motion.div>
-            <Badge variant="outline">{branding.name || 'Admin'} Admin</Badge>
-            <CardTitle className="text-2xl tracking-tight">Admin Portal</CardTitle>
-            <CardDescription>{season === 'summer' ? 'Manage your landscaping business operations' : 'Oversee winter service management system'}</CardDescription>
+
+            {/* Centered Brand Name, Title, Description */}
+            <div className="text-center space-y-2">
+              <Badge variant="outline" className="mx-auto">
+                {branding.name || 'Admin'} Admin
+              </Badge>
+              <CardTitle className="text-2xl tracking-tight">Admin Portal</CardTitle>
+              <CardDescription>
+                {season === 'summer'
+                  ? 'Manage your landscaping business operations'
+                  : 'Oversee winter service management system'}
+              </CardDescription>
+            </div>
           </CardHeader>
 
           <CardContent className="space-y-6">
@@ -185,57 +212,59 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
             onClick={() => setForgotOpen(false)}
           />
 
-          {/* Centered Modal with scale + blur entrance */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, backdropFilter: 'blur(0px)' }}
-            animate={{ opacity: 1, scale: 1, backdropFilter: 'blur(0px)' }}
-            exit={{ opacity: 0, scale: 0.9, backdropFilter: 'blur(0px)' }}
-            transition={{ duration: 0.35, ease: 'easeOut' }}
-            className="fixed inset-0 z-[99991] flex items-center justify-center p-4"
-          >
-            <Card className="bg-background border shadow-2xl w-full max-w-md relative">
-              {/* Close Button on top-right */}
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={() => setForgotOpen(false)}
-                className="absolute top-4 right-4 h-8 w-8 p-0"
-                aria-label="Close"
-              >
-                <X className="w-4 h-4"/>
-              </Button>
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.35, ease: 'easeOut' }}
+          className="fixed inset-0 z-[99991] flex items-center justify-center p-4"
+        >
+          <Card className="bg-background border shadow-2xl w-full max-w-md relative">
+            <CardHeader className="text-center space-y-2">
+              <CardTitle>Forgot Password</CardTitle>
+              <CardDescription>
+                Enter your account email to receive a password reset link.
+              </CardDescription>
+            </CardHeader>
+            
+            <CardContent>
+              <form onSubmit={handleForgotSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="forgot-email">Email</Label>
+                  <Input
+                    id="forgot-email"
+                    type="email"
+                    value={forgotEmail}
+                    onChange={e => setForgotEmail(e.target.value)}
+                    placeholder="you@example.com"
+                    required
+                  />
+                </div>
 
-              <CardHeader>
-                <CardTitle>Forgot Password</CardTitle>
-                <CardDescription>Enter your account email to receive a password reset link.</CardDescription>
-              </CardHeader>
-
-              <CardContent>
-                <form onSubmit={handleForgotSubmit} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="forgot-email">Email</Label>
-                    <Input
-                      id="forgot-email"
-                      type="email"
-                      value={forgotEmail}
-                      onChange={e => setForgotEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      required
-                    />
+                {forgotStatus.type !== 'idle' && (
+                  <div className={`text-sm border rounded-md p-2 ${forgotStatus.type === 'success' ? 'text-green-700 bg-green-50 border-green-200' : 'text-destructive bg-destructive/10 border-destructive/20'}`}>
+                    {forgotStatus.message}
                   </div>
+                )}
 
-                  {forgotStatus.type !== 'idle' && (
-                    <div className={`text-sm border rounded-md p-2 ${forgotStatus.type === 'success' ? 'text-green-700 bg-green-50 border-green-200' : 'text-destructive bg-destructive/10 border-destructive/20'}`}>
-                      {forgotStatus.message}
-                    </div>
-                  )}
+                {/* Send Reset Email */}
+                <Button type="submit" className="w-full">Send Reset Email</Button>
 
-                  <Button type="submit" className="w-full">Send Reset Email</Button>
-                </form>
-              </CardContent>
-            </Card>
-          </motion.div>
+                {/* Close Modal Button */}
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full mt-2"
+                  onClick={() => setForgotOpen(false)}
+                >
+                  Close
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        </motion.div>
+
+
         </>
       )}
 
