@@ -444,7 +444,11 @@ export const Dashboard = () => {
                     </div>
                     <div className="text-xs text-muted-foreground">Drag & drop an image here to upload</div>
                     {service.image && (
-                      <img src={service.image} alt={service.title} className="h-20 w-auto rounded border" />
+                      <img
+                        src={service.image}
+                        alt={service.title}
+                        className="max-h-40 max-w-full w-auto h-auto object-contain rounded border bg-white"
+                      />
                     )}
                   </div>
                   {/* Features (optional) */}
@@ -554,7 +558,11 @@ export const Dashboard = () => {
                     </div>
                     <div className="text-xs text-muted-foreground">Drag & drop an image here to upload</div>
                     {p.imageUrl && (
-                      <img src={p.imageUrl} alt={p.title} className="h-20 w-auto rounded border" />
+                      <img
+                        src={p.imageUrl}
+                        alt={p.title}
+                        className="max-h-40 max-w-full w-auto h-auto object-contain rounded border bg-white"
+                      />
                     )}
                   </div>
                   <div className="flex items-center gap-2 pt-2">
@@ -563,6 +571,9 @@ export const Dashboard = () => {
                   </div>
                 </div>
               ))}
+              <div className="pt-4">
+                <Button size="sm" onClick={addPortfolioItem}><Plus className="w-4 h-4 mr-2" />Add Project</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -590,6 +601,9 @@ export const Dashboard = () => {
                   <Textarea value={t.comment} onChange={e => updateTestimonial(t.id, 'comment', e.target.value)} />
                 </div>
               ))}
+              <div className="pt-4">
+                <Button size="sm" onClick={addTestimonial}><Plus className="w-4 h-4 mr-2" />Add Testimonial</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
