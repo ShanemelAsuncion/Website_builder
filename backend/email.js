@@ -12,12 +12,18 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-export async function sendContactEmail({ name, email, phone, service, message }) {
+export async function sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase }) {
   const recipient = process.env.CONTACT_RECIPIENT || process.env.EMAIL_USER;
   const sentOn = new Date().toLocaleString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
+  const derivedBrand = brandName || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  const derivedLogo = logoUrl || process.env.BRAND_LOGO_URL;
+  const backendOrigin = (assetBase || process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const absoluteLogo = derivedLogo && !/^https?:\/\//i.test(derivedLogo)
+    ? `${backendOrigin}${derivedLogo.startsWith('/') ? derivedLogo : '/' + derivedLogo}`
+    : derivedLogo;
   const html = `
       <!DOCTYPE html>
       <html>
@@ -33,10 +39,7 @@ export async function sendContactEmail({ name, email, phone, service, message })
               <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%; max-width:600px; background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
                 <tr>
                   <td align="center" style="background:linear-gradient(135deg,#2563eb 0%, #059669 100%); color:#ffffff; padding:30px 20px;">
-                    <div style="display:inline-block; background-color:rgba(255,255,255,0.1); border-radius:50px; padding:15px 25px; margin-bottom:15px;">
-                      <span style="font-size:32px; color:#ffffff; font-weight:bold; letter-spacing:1px;">❄️🌿</span>
-                    </div>
-                    <h1 style="color:#ffffff; font-size:28px; font-weight:bold; margin:0; text-shadow:0 2px 4px rgba(0,0,0,0.3);">Jay's Blade and Snow Services</h1>
+                    <h1 style="color:#ffffff; font-size:28px; font-weight:bold; margin:0; text-shadow:0 2px 4px rgba(0,0,0,0.3);">${derivedBrand}</h1>
                     <p style="color:rgba(255,255,255,0.9); font-size:16px; margin:8px 0 0 0; font-weight:300;">Professional Landscaping • Reliable Snow Removal</p>
                   </td>
                 </tr>
@@ -79,7 +82,7 @@ export async function sendContactEmail({ name, email, phone, service, message })
                     </div>
 
                     <div style="text-align:center; padding:20px 0;">
-                      <a href="mailto:${email}" style="display:inline-block; background-color:#2563eb; color:#ffffff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;">📞 Contact Customer Now</a>
+                      <a href="mailto:${email}" style="display:inline-block; background-color:#2563eb; color:#ffffff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;">✉️ Contact Customer Now</a>
                       <p style="color:#6b7280; font-size:14px; margin:10px 0 0 0;">Respond promptly to provide excellent customer service!</p>
                     </div>
                   </td>
@@ -101,7 +104,7 @@ export async function sendContactEmail({ name, email, phone, service, message })
   `;
 
   const mailOptions = {
-    from: `"Blade and Snow Services" <${process.env.EMAIL_USER}>`,
+    from: `${derivedBrand} <${process.env.EMAIL_USER}>`,
     to: recipient,
     replyTo: email,
     subject: `New Quote Request: ${service}`,
@@ -119,12 +122,17 @@ export async function sendContactEmail({ name, email, phone, service, message })
   }
 }
 
-export async function sendPasswordResetEmail({ to, userName, brandName, supportEmail, siteUrl, logoUrl, resetUrl: overrideResetUrl } = {}) {
+export async function sendPasswordResetEmail({ to, userName, brandName, supportEmail, siteUrl, logoUrl, resetUrl: overrideResetUrl, assetBase } = {}) {
   const derivedBrand = brandName || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
   const derivedSupport = supportEmail || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || 'support@jaysbladeandsnow.com';
   const derivedSiteUrl = siteUrl || process.env.SITE_URL || 'http://localhost:3000';
   const derivedUserName = userName || (to ? String(to).split('@')[0] : 'User');
   const resetUrl = overrideResetUrl || `${derivedSiteUrl}/reset-password`;
+  const derivedLogo = logoUrl || process.env.BRAND_LOGO_URL;
+  const backendOriginPR = (assetBase || process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const absoluteLogoPR = derivedLogo && !/^https?:\/\//i.test(derivedLogo)
+    ? `${backendOriginPR}${derivedLogo.startsWith('/') ? derivedLogo : '/' + derivedLogo}`
+    : derivedLogo;
 
   // Password reset email HTML per provided template, with branding variables injected
   const html = `<!DOCTYPE html>
@@ -148,9 +156,6 @@ export async function sendPasswordResetEmail({ to, userName, brandName, supportE
         <table class="email-container" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
             <tr>
                 <td style="background: linear-gradient(135deg,#2563eb 0%,#059669 100%); padding:30px 20px; text-align:center;">
-                    <div style="display:inline-block; background: rgba(255,255,255,0.1); border-radius:50px; padding:15px 25px; margin-bottom:15px;">
-                        ${logoUrl ? `<img src="${logoUrl}" alt="${derivedBrand} logo" style="height:32px; display:block;" />` : `<span style="font-size:32px; color:#fff; font-weight:bold;">❄️🌿</span>`}
-                    </div>
                     <h1 style="color:#fff; font-size:28px; font-weight:bold; margin:0;" class="mobile-header">
                         ${derivedBrand}
                     </h1>
@@ -240,12 +245,17 @@ export async function sendPasswordResetEmail({ to, userName, brandName, supportE
   }
 }
 
-export async function sendVerificationEmail({ to, verifyUrl, userName, brandName, supportEmail, siteUrl } = {}) {
+export async function sendVerificationEmail({ to, verifyUrl, userName, brandName, supportEmail, siteUrl, logoUrl, assetBase } = {}) {
   // Derive sensible defaults if not provided
   const derivedBrand = brandName || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
   const derivedSupport = supportEmail || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || 'support@jaysbladeandsnow.com';
   const derivedSiteUrl = siteUrl || process.env.SITE_URL || (verifyUrl ? new URL(verifyUrl).origin : 'http://localhost:3000');
   const derivedUserName = userName || (to ? String(to).split('@')[0] : 'Admin');
+  const derivedLogo = logoUrl || process.env.BRAND_LOGO_URL;
+  const backendOriginV = (assetBase || process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const absoluteLogoV = derivedLogo && !/^https?:\/\//i.test(derivedLogo)
+    ? `${backendOriginV}${derivedLogo.startsWith('/') ? derivedLogo : '/' + derivedLogo}`
+    : derivedLogo;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -290,9 +300,6 @@ export async function sendVerificationEmail({ to, verifyUrl, userName, brandName
             <!-- Header -->
             <tr>
                 <td style="background: linear-gradient(135deg, #2563eb 0%, #059669 100%); padding: 30px 20px; text-align: center;">
-                    <div style="display: inline-block; background-color: rgba(255, 255, 255, 0.1); border-radius: 50px; padding: 15px 25px; margin-bottom: 15px;">
-                        <span style="font-size: 32px; color: #ffffff; font-weight: bold; letter-spacing: 1px;">❄️🌿</span>
-                    </div>
                     <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);" class="mobile-header">
                         ${derivedBrand}
                     </h1>

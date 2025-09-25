@@ -1,3 +1,19 @@
+// Derive asset base from request (works behind proxies/CDNs)
+function getAssetBase(req) {
+  try {
+    const xfProto = (req.headers['x-forwarded-proto'] || '').toString().split(',')[0].trim();
+    const xfHost = (req.headers['x-forwarded-host'] || '').toString().split(',')[0].trim();
+    if (xfProto && xfHost) {
+      return `${xfProto}://${xfHost}`.replace(/\/$/, '');
+    }
+  } catch {}
+  try {
+    const host = req.get('host');
+    if (host) return `${req.protocol}://${host}`.replace(/\/$/, '');
+  } catch {}
+  return (process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+}
+
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
@@ -106,6 +122,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       // Still respond OK without indicating existence
       try {
         const origin = req.headers.origin || process.env.SITE_URL || 'http://localhost:3000';
+        const assetBase = getAssetBase(req);
         await sendPasswordResetEmail({
           to: email,
           userName: email.split('@')[0],
@@ -113,6 +130,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
           supportEmail: process.env.SUPPORT_EMAIL,
           siteUrl: origin,
           logoUrl,
+          assetBase,
         });
       } catch (e) {
         console.warn('Attempted to send reset email for non-existing user:', e.message);
@@ -141,6 +159,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
         supportEmail: process.env.SUPPORT_EMAIL,
         siteUrl: origin,
         logoUrl,
+        assetBase: getAssetBase(req),
         resetUrl,
       });
     } catch (e) {
@@ -626,8 +645,18 @@ app.post('/api/auth/request-email-change', authenticateToken, async (req, res) =
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
     await db.run('INSERT INTO email_change_requests (userId, newEmail, token, expiresAt) VALUES (?, ?, ?, ?)', [req.user.id, newEmail, token, expiresAt]);
     const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify-email-change?token=${encodeURIComponent(token)}`;
+    // Pull branding from content table
+    let brandName, logoUrl;
     try {
-      await sendVerificationEmail({ to: newEmail, verifyUrl });
+      const row = await db.get("SELECT value FROM content WHERE key = 'branding'");
+      if (row?.value) {
+        const parsed = JSON.parse(row.value);
+        brandName = parsed?.name;
+        logoUrl = parsed?.logoUrl;
+      }
+    } catch {}
+    try {
+      await sendVerificationEmail({ to: newEmail, verifyUrl, brandName, logoUrl, assetBase: getAssetBase(req) });
     } catch (e) {
       console.warn('Failed to send verification email, falling back to console log:', e.message);
       console.log('Email change verification URL:', verifyUrl);
@@ -857,6 +886,36 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
 });
 
+// Health: branding and computed absolute logo URL
+app.get('/api/health/branding', async (req, res) => {
+  try {
+    let branding = {};
+    try {
+      const row = await db.get("SELECT value FROM content WHERE key = 'branding'");
+      if (row?.value) {
+        branding = JSON.parse(row.value);
+      }
+    } catch {}
+    const backendOrigin = getAssetBase(req);
+    const logoUrl = (branding && (branding).logoUrl) || '';
+    const absoluteLogoUrl = logoUrl && !/^https?:\/\//i.test(logoUrl)
+      ? `${backendOrigin}${logoUrl.startsWith('/') ? logoUrl : '/' + logoUrl}`
+      : logoUrl;
+    // Check if local file exists when using a relative path
+    let fileExists = null;
+    try {
+      if (logoUrl && !/^https?:\/\//i.test(logoUrl)) {
+        const fsPath = path.join(uploadsDir, path.basename(logoUrl));
+        fileExists = fs.existsSync(fsPath);
+      }
+    } catch {}
+    return res.json({ branding, backendOrigin, logoUrl, absoluteLogoUrl, fileExists });
+  } catch (e) {
+    console.error('health/branding error:', e);
+    return res.status(500).json({ error: 'Failed to load branding health' });
+  }
+});
+
 // Contact form endpoint
 app.post('/api/contact', contactLimiter, async (req, res) => {
   try {
@@ -867,8 +926,19 @@ app.post('/api/contact', contactLimiter, async (req, res) => {
       return res.status(400).json({ error: 'Please fill out all required fields.' });
     }
 
-    // Send the email
-    await sendContactEmail({ name, email, phone, service, message });
+    // Fetch branding from DB to include brand name and logo in email
+    let brandName, logoUrl;
+    try {
+      const row = await db.get("SELECT value FROM content WHERE key = 'branding'");
+      if (row?.value) {
+        const parsed = JSON.parse(row.value);
+        brandName = parsed?.name;
+        logoUrl = parsed?.logoUrl;
+      }
+    } catch {}
+
+    // Send the email with branding
+    await sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase: getAssetBase(req) });
 
     res.status(200).json({ message: 'Your quote request has been sent successfully!' });
 
