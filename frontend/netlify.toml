@@ -1,0 +1,9 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# SPA routing: send all routes to index.html so react-router works on refresh/deeplinks
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

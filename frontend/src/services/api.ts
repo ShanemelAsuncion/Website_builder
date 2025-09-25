@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+// Read API base from Vite env (set this on Netlify). Fallback to localhost for dev.
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:5000/api';
 const BACKEND_BASE_URL = API_BASE_URL.replace(/\/?api\/?$/, '');
 
 // Create axios instance with default config

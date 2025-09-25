@@ -90,8 +90,14 @@ const globalLimiter = rateLimit({
   legacyHeaders: false,
 });
 app.use(globalLimiter);
+// CORS allowlist: configurable via FRONTEND_ORIGINS (comma-separated), with sensible local defaults
+const DEFAULT_ORIGINS = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
+const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGINS || '')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 app.use(cors({
-  origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'],
+  origin: FRONTEND_ORIGINS.length ? FRONTEND_ORIGINS : DEFAULT_ORIGINS,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
