@@ -447,7 +447,7 @@ export const Dashboard = () => {
                       <img
                         src={service.image}
                         alt={service.title}
-                        className="max-h-40 max-w-full w-auto h-auto object-contain rounded border bg-white"
+                        className="max-h-[600px] max-w-[600px] w-auto h-auto object-contain rounded border bg-white"
                       />
                     )}
                   </div>
@@ -561,7 +561,7 @@ export const Dashboard = () => {
                       <img
                         src={p.imageUrl}
                         alt={p.title}
-                        className="max-h-40 max-w-full w-auto h-auto object-contain rounded border bg-white"
+                        className="max-h-[600px] max-w-[600px] w-auto h-auto object-contain rounded border bg-white"
                       />
                     )}
                   </div>
