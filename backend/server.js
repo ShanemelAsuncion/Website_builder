@@ -93,19 +93,25 @@ const globalLimiter = rateLimit({
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 });
-app.use(globalLimiter);
 // CORS allowlist: configurable via FRONTEND_ORIGINS (comma-separated), with sensible local defaults
 const DEFAULT_ORIGINS = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
 const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGINS || '')
   .split(',')
   .map(s => s.trim())
   .filter(Boolean);
-app.use(cors({
+const corsOptions = {
   origin: FRONTEND_ORIGINS.length ? FRONTEND_ORIGINS : DEFAULT_ORIGINS,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-}));
+  credentials: true,
+};
+// Apply CORS BEFORE any rate limiting so preflight and responses include headers
+app.use(cors(corsOptions));
+// Handle all OPTIONS preflights
+app.options('*', cors(corsOptions));
+
+// Now attach global basic rate limiter
+app.use(globalLimiter);
 
 app.use(bodyParser.json());
 
