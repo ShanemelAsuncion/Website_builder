@@ -1,6 +1,9 @@
 [build]
   command = "npm run build"
-  publish = "dist"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "20"
 
 # SPA routing: send all routes to index.html so react-router works on refresh/deeplinks
 [[redirects]]
