@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Phone, Mail, MapPin, Clock, Send, CheckCircle, Loader2, Facebook } from "lucide-react";
 import { motion } from "motion/react";
 import api, { contentApi } from "../services/api";
+import { getConfig } from "../services/runtimeConfig";
 
 interface ContactProps {
   season: 'summer' | 'winter';
@@ -23,6 +24,12 @@ export function Contact({ season }: ContactProps) {
   });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [responseMsg, setResponseMsg] = useState('');
+
+  // Brand name for subtext
+  const [brandName, setBrandName] = useState<string>("Jay's Blade and Snow Services");
+
+  // Services for dropdown (loaded from DB by season)
+  const [services, setServices] = useState<Array<{ value: string; label: string }>>([]);
 
   const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string; facebook?: string; facebookName?: string; facebookUrl?: string }>({
     phone: '(555) 123-4567',
@@ -50,11 +57,61 @@ export function Contact({ season }: ContactProps) {
             facebookUrl: parsed.facebookUrl ?? prev.facebookUrl,
           }));
         }
+
+        // Determine brand name: prefer runtime config SITE_NAME, else branding content name
+        try {
+          const cfg = getConfig();
+          if (cfg?.SITE_NAME) setBrandName(cfg.SITE_NAME);
+        } catch {}
+        try {
+          const brandingItem = items.find(i => i.key === 'branding');
+          if (brandingItem?.value) {
+            const branding = JSON.parse(brandingItem.value) as { name?: string };
+            if (branding?.name) setBrandName(branding.name);
+          }
+        } catch {}
       } catch {
         // keep fallbacks
       }
     })();
   }, []);
+
+  // Load services for current season from DB
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const key = `services.${season}`;
+        const svcItem = items.find(i => i.key === key);
+        if (svcItem?.value) {
+          const parsed = JSON.parse(svcItem.value) as Array<{ id?: string; title?: string } | string>;
+          const mapped: Array<{ value: string; label: string }> = [];
+          for (const it of parsed as any[]) {
+            if (typeof it === 'string') {
+              mapped.push({ value: it, label: it });
+            } else if (it && (it as any).title) {
+              const v = (it as any).id || (it as any).title?.toString().toLowerCase().replace(/\s+/g, '-');
+              mapped.push({ value: v, label: (it as any).title });
+            }
+          }
+          setServices(mapped);
+          return;
+        }
+      } catch {}
+      // Fallback static options if DB lookup fails
+      if (season === 'summer') {
+        setServices([
+          { value: 'lawn-care', label: 'Lawn Care & Maintenance' },
+          { value: 'landscaping', label: 'Landscape Design' },
+        ]);
+      } else {
+        setServices([
+          { value: 'snow-removal', label: 'Snow Removal & Plowing' },
+          { value: 'ice-management', label: 'Ice Management' },
+        ]);
+      }
+    })();
+  }, [season]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -243,10 +300,9 @@ export function Contact({ season }: ContactProps) {
                       <SelectValue placeholder="What service are you interested in?" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lawn-care">Lawn Care & Maintenance</SelectItem>
-                      <SelectItem value="snow-removal">Snow Removal & Plowing</SelectItem>
-                      <SelectItem value="landscaping">Landscape Design</SelectItem>
-                      <SelectItem value="ice-management">Ice Management</SelectItem>
+                      {services.map(s => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
                       <SelectItem value="multiple">Multiple Services</SelectItem>
                       <SelectItem value="consultation">Free Consultation</SelectItem>
                     </SelectContent>
@@ -285,7 +341,7 @@ export function Contact({ season }: ContactProps) {
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                  By submitting this form, you agree to be contacted by ProSeason regarding your service request. 
+                  By submitting this form, you agree to be contacted by {brandName} regarding your service request.
                   We respect your privacy and never share your information.
                 </p>
               </form>

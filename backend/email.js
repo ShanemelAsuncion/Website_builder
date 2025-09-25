@@ -4,13 +4,50 @@ import nodemailer from 'nodemailer';
 
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Build transport from env with sensible defaults (Gmail app password by default)
+const SMTP_HOST = process.env.SMTP_HOST; // e.g. 'smtp.gmail.com'
+const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined; // e.g. 465 or 587
+const SMTP_SECURE = typeof process.env.SMTP_SECURE !== 'undefined'
+  ? /^(1|true|yes)$/i.test(String(process.env.SMTP_SECURE))
+  : undefined; // default will be inferred below
+
+const baseAuth = {
+  user: process.env.EMAIL_USER,
+  pass: process.env.EMAIL_PASS,
+};
+
+// Prefer explicit SMTP settings if provided; otherwise fall back to Gmail service
+let transporter;
+if (SMTP_HOST) {
+  transporter = nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT ?? 465,
+    secure: typeof SMTP_SECURE === 'boolean' ? SMTP_SECURE : (SMTP_PORT ? SMTP_PORT === 465 : true),
+    auth: baseAuth,
+    // Pooling and timeouts to reduce ETIMEDOUT risk
+    pool: true,
+    maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 1),
+    maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 50),
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 15000), // 15s
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 10000), // 10s
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000), // 20s
+    logger: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
+    debug: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
+  });
+} else {
+  transporter = nodemailer.createTransport({
+    service: 'gmail',
+    auth: baseAuth,
+    pool: true,
+    maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 1),
+    maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 50),
+    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 15000),
+    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 10000),
+    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000),
+    logger: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
+    debug: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
+  });
+}
 
 export async function sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase }) {
   const recipient = process.env.CONTACT_RECIPIENT || process.env.EMAIL_USER;
@@ -103,8 +140,9 @@ export async function sendContactEmail({ name, email, phone, service, message, b
       </html>
   `;
 
+  const fromAddress = process.env.MAIL_FROM || process.env.EMAIL_USER;
   const mailOptions = {
-    from: `${derivedBrand} <${process.env.EMAIL_USER}>`,
+    from: `${derivedBrand} <${fromAddress}>`,
     to: recipient,
     replyTo: email,
     subject: `New Quote Request: ${service}`,
@@ -117,7 +155,12 @@ export async function sendContactEmail({ name, email, phone, service, message, b
     console.log('Email sent:', info.response);
     return info;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Error sending email:', {
+      message: error?.message,
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+    });
     throw new Error('Failed to send email');
   }
 }
@@ -228,8 +271,9 @@ export async function sendPasswordResetEmail({ to, userName, brandName, supportE
   const subject = `Reset your password - ${derivedBrand}`;
   const text = `Hello ${derivedUserName},\n\nYou requested to reset your password. Visit: ${resetUrl}\n\nIf you did not request this, you can ignore this email.\n\n— ${derivedBrand}`;
 
+  const fromAddress = process.env.MAIL_FROM || process.env.EMAIL_USER;
   const mailOptions = {
-    from: `${derivedBrand} <${process.env.EMAIL_USER}>`,
+    from: `${derivedBrand} <${fromAddress}>`,
     to: to,
     subject,
     html,
@@ -240,7 +284,12 @@ export async function sendPasswordResetEmail({ to, userName, brandName, supportE
     console.log('Password reset email sent:', info.response);
     return info;
   } catch (error) {
-    console.error('Error sending password reset email:', error);
+    console.error('Error sending password reset email:', {
+      message: error?.message,
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+    });
     throw new Error('Failed to send password reset email');
   }
 }
@@ -387,8 +436,9 @@ export async function sendVerificationEmail({ to, verifyUrl, userName, brandName
   const subject = `Verify your email - ${derivedBrand}`;
   const text = `Hello ${derivedUserName},\n\nPlease verify your email to activate your account.\n\nVerification link: ${verifyUrl}\n\nIf you did not request this, you can ignore this email.\n\n— ${derivedBrand}`;
 
+  const fromAddress = process.env.MAIL_FROM || process.env.EMAIL_USER;
   const mailOptions = {
-    from: `${derivedBrand} <${process.env.EMAIL_USER}>`,
+    from: `${derivedBrand} <${fromAddress}>`,
     to,
     subject,
     html,
@@ -399,7 +449,12 @@ export async function sendVerificationEmail({ to, verifyUrl, userName, brandName
     console.log('Verification email sent:', info.response);
     return info;
   } catch (error) {
-    console.error('Error sending verification email:', error);
+    console.error('Error sending verification email:', {
+      message: error?.message,
+      code: error?.code,
+      command: error?.command,
+      response: error?.response,
+    });
     throw new Error('Failed to send verification email');
   }
 }
