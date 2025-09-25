@@ -44,6 +44,10 @@ const __dirname = dirname(__filename);
 const { Database } = sqlite3.verbose();
 
 const app = express();
+// Behind a reverse proxy (Render, Netlify, etc.), trust X-Forwarded-* headers
+// This prevents express-rate-limit from throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and ensures req.protocol/req.ip are derived correctly.
+app.set('trust proxy', true);
 const PORT = process.env.PORT || 5000;
 
 // Use a consistent JWT secret for development
