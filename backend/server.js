@@ -62,35 +62,7 @@ console.log('Server starting with JWT configuration:', {
   JWT_EXPIRES_IN
 });
 
-// Settings routes (master only). Store site-wide public runtime values.
-// These return/store only non-sensitive keys, e.g., SITE_NAME, USER_EMAIL
-app.get('/api/settings', authenticateToken, requireMaster, async (_req, res) => {
-  try {
-    const rows = await settingsAdapter.getAll();
-    res.json(rows);
-  } catch (e) {
-    console.error('settings getAll error:', e);
-    res.status(500).json({ error: 'Failed to load settings' });
-  }
-});
-
-app.put('/api/settings', authenticateToken, requireMaster, async (req, res) => {
-  try {
-    const { items } = req.body || {};
-    if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' });
-    const results = [];
-    for (const it of items) {
-      if (!it || typeof it.key !== 'string' || typeof it.value === 'undefined') continue;
-      const valueJson = typeof it.value === 'string' ? it.value : JSON.stringify(it.value);
-      const saved = await settingsAdapter.upsert(it.key, valueJson);
-      results.push(saved);
-    }
-    res.json({ updated: results.length, items: results });
-  } catch (e) {
-    console.error('settings upsert error:', e);
-    res.status(500).json({ error: 'Failed to save settings' });
-  }
-});
+// (settings routes moved below, after auth middleware definitions)
 
 // Runtime config cache (in-memory, short-lived)
 let __runtimeConfigCache = { data: null, ts: 0 };
@@ -1015,6 +987,36 @@ app.delete('/api/content/:id', authenticateToken, async (req, res) => {
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'Server is running' });
+});
+
+// Settings routes (master only). Store site-wide public runtime values.
+// These return/store only non-sensitive keys, e.g., SITE_NAME, USER_EMAIL
+app.get('/api/settings', authenticateToken, requireMaster, async (_req, res) => {
+  try {
+    const rows = await settingsAdapter.getAll();
+    res.json(rows);
+  } catch (e) {
+    console.error('settings getAll error:', e);
+    res.status(500).json({ error: 'Failed to load settings' });
+  }
+});
+
+app.put('/api/settings', authenticateToken, requireMaster, async (req, res) => {
+  try {
+    const { items } = req.body || {};
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' });
+    const results = [];
+    for (const it of items) {
+      if (!it || typeof it.key !== 'string' || typeof it.value === 'undefined') continue;
+      const valueJson = typeof it.value === 'string' ? it.value : JSON.stringify(it.value);
+      const saved = await settingsAdapter.upsert(it.key, valueJson);
+      results.push(saved);
+    }
+    res.json({ updated: results.length, items: results });
+  } catch (e) {
+    console.error('settings upsert error:', e);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
 });
 
 // Health: branding and computed absolute logo URL
