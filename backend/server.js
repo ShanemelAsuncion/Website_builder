@@ -107,8 +107,13 @@ const corsOptions = {
 };
 // Apply CORS BEFORE any rate limiting so preflight and responses include headers
 app.use(cors(corsOptions));
-// Handle all OPTIONS preflights
-app.options('*', cors(corsOptions));
+// Short-circuit all OPTIONS preflight requests (headers already set by cors middleware)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(204);
+  }
+  next();
+});
 
 // Now attach global basic rate limiter
 app.use(globalLimiter);
