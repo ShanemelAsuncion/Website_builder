@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { authApi, contentApi } from '../../services/api';
+import { authApi, contentApi, resolveAssetUrl } from '../../services/api';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
 import { Badge } from '../ui/badge';
 import { motion } from 'framer-motion';
@@ -152,7 +152,7 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
             >
               {branding.logoUrl ? (
                 <img
-                  src={branding.logoUrl}
+                  src={resolveAssetUrl(branding.logoUrl)}
                   alt={branding.name || 'Company Logo'}
                   className="w-16 h-16 object-contain bg-white rounded-2xl"
                 />

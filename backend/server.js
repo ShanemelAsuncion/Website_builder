@@ -31,6 +31,9 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { initialContent } from './seedData.js';
 import { sendContactEmail, sendVerificationEmail, sendPasswordResetEmail } from './email.js';
+import crypto from 'crypto';
+import sharp from 'sharp';
+import supabase from './supabaseClient.js';
 
 // Configure dotenv
 dotenv.config();
@@ -229,6 +232,130 @@ const upload = multer({
   storage,
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
 });
+
+// Uploads directory capacity limits (to protect free tier quotas)
+const UPLOADS_MAX_BYTES = Number(process.env.UPLOADS_MAX_BYTES || 20 * 1024 * 1024); // 20MB default
+const UPLOADS_KEEP_MIN = Number(process.env.UPLOADS_KEEP_MIN || 10); // always keep at least N newest files
+
+// Helpers for uploads maintenance
+function getAllUploadFiles() {
+  try {
+    const names = fs.readdirSync(uploadsDir).filter(n => !n.startsWith('.'));
+    return names.map(name => ({ name, abs: path.join(uploadsDir, name) }))
+      .filter(f => {
+        try { return fs.statSync(f.abs).isFile(); } catch { return false; }
+      });
+  } catch {
+    return [];
+  }
+}
+
+function getUploadsDirSize() {
+  return getAllUploadFiles().reduce((sum, f) => {
+    try { return sum + fs.statSync(f.abs).size; } catch { return sum; }
+  }, 0);
+}
+
+function hashFileSync(absPath) {
+  const hash = crypto.createHash('sha256');
+  const buf = fs.readFileSync(absPath);
+  hash.update(buf);
+  return hash.digest('hex');
+}
+
+async function getReferencedUploadFilenames() {
+  // Scan the content table JSON for any '/uploads/<file>' references
+  const rows = await db.all('SELECT key, value FROM content');
+  const refs = new Set();
+  const regex = /\/(?:uploads)\/(\S+?)(?=["'\]\s}>)])/g; // capture filenames after /uploads/
+  for (const row of rows) {
+    const text = String(row.value || '');
+    let m;
+    while ((m = regex.exec(text)) !== null) {
+      if (m[1]) refs.add(m[1]);
+    }
+    // Also try to parse JSON and look for logoUrl-like fields
+    try {
+      const parsed = JSON.parse(row.value);
+      const stack = [parsed];
+      while (stack.length) {
+        const cur = stack.pop();
+        if (typeof cur === 'string') {
+          const u = cur;
+          const match = u.match(/\/(?:uploads)\/([^\s"']+)/);
+          if (match && match[1]) refs.add(match[1]);
+        } else if (Array.isArray(cur)) {
+          for (const v of cur) stack.push(v);
+        } else if (cur && typeof cur === 'object') {
+          for (const k of Object.keys(cur)) stack.push(cur[k]);
+        }
+      }
+    } catch {}
+  }
+  return refs;
+}
+
+async function cleanupUploadsInternal({ dryRun = false } = {}) {
+  const report = {
+    totalBeforeBytes: getUploadsDirSize(),
+    deletedUnreferenced: [],
+    deletedDuplicates: [],
+    kept: [],
+    errors: [],
+  };
+
+  const files = getAllUploadFiles()
+    .map(f => ({ ...f, stat: fs.statSync(f.abs) }))
+    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs); // newest first
+
+  // Build referenced set
+  let referenced = new Set();
+  try {
+    referenced = await getReferencedUploadFilenames();
+  } catch (e) {
+    report.errors.push(`Failed to read references: ${e.message}`);
+  }
+
+  // Detect duplicates by hash (keep newest copy)
+  const seenByHash = new Map();
+  for (const f of files) {
+    try {
+      const h = hashFileSync(f.abs);
+      if (seenByHash.has(h)) {
+        // duplicate
+        if (!dryRun) fs.unlinkSync(f.abs);
+        report.deletedDuplicates.push(f.name);
+        continue;
+      }
+      seenByHash.set(h, f.name);
+    } catch (e) {
+      report.errors.push(`Hash error for ${f.name}: ${e.message}`);
+    }
+  }
+
+  // Recompute files list after duplicate removal
+  const postDupFiles = getAllUploadFiles().map(f => ({ ...f, stat: fs.statSync(f.abs) }));
+
+  // Remove unreferenced files (preserve newest UPLOADS_KEEP_MIN files as safety)
+  const sorted = [...postDupFiles].sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
+  const preserve = new Set(sorted.slice(0, Math.max(0, UPLOADS_KEEP_MIN)).map(f => f.name));
+  for (const f of sorted) {
+    if (preserve.has(f.name)) { report.kept.push(f.name); continue; }
+    if (!referenced.has(f.name)) {
+      try {
+        if (!dryRun) fs.unlinkSync(f.abs);
+        report.deletedUnreferenced.push(f.name);
+      } catch (e) {
+        report.errors.push(`Delete error for ${f.name}: ${e.message}`);
+      }
+    } else {
+      report.kept.push(f.name);
+    }
+  }
+
+  report.totalAfterBytes = getUploadsDirSize();
+  return report;
+}
 
 // Per-route strict limiters
 const contactLimiter = rateLimit({
@@ -843,12 +970,110 @@ app.post('/api/upload', authenticateToken, uploadLimiter, upload.single('file'),
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    const relative = `/uploads/${req.file.filename}`;
+    // Optimize image using Sharp -> convert to WebP, resize for reasonable display, and reduce quality
+    let outName = req.file.filename;
+    let optimizedPath = path.join(uploadsDir, req.file.filename);
+    try {
+      const inputPath = optimizedPath;
+      const base = path.parse(req.file.filename).name;
+      const outFile = `${base}.webp`;
+      const outPath = path.join(uploadsDir, outFile);
+
+      // Read & process
+      await sharp(inputPath)
+        .rotate() // respect EXIF
+        .resize({ width: 1920, withoutEnlargement: true })
+        .webp({ quality: 80 })
+        .toFile(outPath);
+
+      // Replace original with optimized version
+      try { fs.unlinkSync(inputPath); } catch {}
+      outName = outFile;
+      optimizedPath = outPath;
+    } catch (e) {
+      console.warn('Image optimization failed; keeping original:', e.message);
+    }
+
+    // Attempt to upload to Supabase Storage
+    const bucket = process.env.SUPABASE_BUCKET || 'uploads';
+    let publicUrl = '';
+    try {
+      const fileData = fs.readFileSync(optimizedPath);
+      const storagePath = `${Date.now()}-${Math.round(Math.random() * 1e9)}.webp`;
+      const { error: upErr } = await supabase
+        .storage
+        .from(bucket)
+        .upload(storagePath, fileData, {
+          contentType: 'image/webp',
+          upsert: false,
+        });
+      if (upErr) throw upErr;
+      const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+      publicUrl = data.publicUrl;
+      // Remove local file after successful remote upload
+      try { fs.unlinkSync(optimizedPath); } catch {}
+    } catch (e) {
+      console.warn('Supabase upload failed; serving from local uploads:', e.message);
+    }
+
+    const relative = `/uploads/${outName}`;
     const absolute = `${req.protocol}://${req.get('host')}${relative}`;
+    // Enforce total uploads directory size limit. Try to auto-purge unreferenced files if over.
+    try {
+      let total = getUploadsDirSize();
+      if (total > UPLOADS_MAX_BYTES) {
+        // attempt auto-clean (non-dry-run)
+        await cleanupUploadsInternal({ dryRun: false });
+        total = getUploadsDirSize();
+      }
+      if (total > UPLOADS_MAX_BYTES) {
+        // still over: delete the just-uploaded file and reject
+        try { fs.unlinkSync(path.join(uploadsDir, req.file.filename)); } catch {}
+        return res.status(413).json({ error: 'Uploads storage limit exceeded' });
+      }
+    } catch (e) {
+      console.warn('Uploads size enforcement error:', e.message);
+    }
+
+    // Prefer Supabase public URL when available
+    if (publicUrl) {
+      return res.status(201).json({ url: publicUrl, path: publicUrl });
+    }
+
+    // Fallback to local file serving
     return res.status(201).json({ url: absolute, path: relative });
   } catch (error) {
     console.error('Upload error:', error);
     return res.status(500).json({ error: 'Failed to upload file' });
+  }
+});
+
+// Admin endpoints to inspect and clean uploads
+app.get('/api/admin/uploads/status', authenticateToken, requireMaster, async (_req, res) => {
+  try {
+    const files = getAllUploadFiles();
+    const total = getUploadsDirSize();
+    const referenced = await getReferencedUploadFilenames();
+    res.json({
+      count: files.length,
+      totalBytes: total,
+      maxBytes: UPLOADS_MAX_BYTES,
+      keepMin: UPLOADS_KEEP_MIN,
+      referencedCount: referenced.size,
+      files: files.map(f => ({ name: f.name, size: fs.statSync(f.abs).size, referenced: referenced.has(f.name) })),
+    });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to compute uploads status' });
+  }
+});
+
+app.post('/api/admin/uploads/cleanup', authenticateToken, requireMaster, async (req, res) => {
+  try {
+    const dryRun = !!req.query.dryRun || !!req.body?.dryRun;
+    const report = await cleanupUploadsInternal({ dryRun });
+    res.json({ dryRun, ...report });
+  } catch (e) {
+    res.status(500).json({ error: 'Failed to cleanup uploads' });
   }
 });
 
