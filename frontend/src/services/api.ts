@@ -1,6 +1,7 @@
 import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:5000/api';
+const BACKEND_BASE_URL = API_BASE_URL.replace(/\/?api\/?$/, '');
 
 // Create axios instance with default config
 const api = axios.create({
@@ -122,3 +123,15 @@ export const adminApi = {
 };
 
 export default api;
+
+// Resolve asset URLs (e.g., images) to the backend origin so relative /uploads paths work in the browser
+export const resolveAssetUrl = (url?: string) => {
+  if (!url) return '';
+  try {
+    // If it's already absolute (http/https), return as-is
+    if (/^https?:\/\//i.test(url)) return url;
+  } catch {}
+  // Ensure single slash between base and path
+  const path = url.startsWith('/') ? url : `/${url}`;
+  return `${BACKEND_BASE_URL}${path}`;
+};

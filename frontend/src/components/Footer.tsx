@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { ArrowRight } from "lucide-react";
-import { contentApi } from "../services/api";
+import { contentApi, resolveAssetUrl } from "../services/api";
 
 interface FooterProps {
   season: 'summer' | 'winter';
@@ -86,7 +86,7 @@ export function Footer({ season }: FooterProps) {
           <div className="lg:col-span-2">
             <div className="flex items-center gap-3 mb-6">
               {branding.logoUrl && (
-                <img src={branding.logoUrl} alt={branding.name || 'Company Logo'} className="h-8 w-8 md:h-10 md:w-10 object-contain" />
+                <img src={resolveAssetUrl(branding.logoUrl)} alt={branding.name || 'Company Logo'} className="h-8 w-8 md:h-10 md:w-10 object-contain" />
               )}
               <h3 className="text-2xl md:text-3xl tracking-tight">{branding.name || "Jay's Blade & Snow Services Inc"}</h3>
               <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse"></div>

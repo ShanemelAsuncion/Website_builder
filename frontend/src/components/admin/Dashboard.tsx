@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { contentApi, authApi, adminApi } from '../../services/api';
+import { contentApi, authApi, adminApi, resolveAssetUrl } from '../../services/api';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -140,6 +140,22 @@ export const Dashboard = () => {
       const existingContent = await contentApi.getAll() as Array<{ id: string; key: string; value: string }>;
       const contentMap = new Map(existingContent.map(i => [i.key, i.id]));
 
+      // Normalize branding.logoUrl to relative /uploads path if a full URL was provided
+      const brandingNormalized = { ...uiContent.branding } as any;
+      try {
+        const raw = brandingNormalized?.logoUrl || '';
+        if (raw) {
+          try {
+            const u = new URL(raw, window.location.origin);
+            if (u.pathname && u.pathname.startsWith('/uploads/')) {
+              brandingNormalized.logoUrl = u.pathname;
+            }
+          } catch {
+            // not a URL; leave as-is
+          }
+        }
+      } catch {}
+
       const contentToSave = [
         { key: 'hero.summer', value: JSON.stringify(uiContent.hero.summer) },
         { key: 'hero.winter', value: JSON.stringify(uiContent.hero.winter) },
@@ -149,7 +165,7 @@ export const Dashboard = () => {
         { key: 'portfolio.winter', value: JSON.stringify(uiContent.portfolio.winter) },
         { key: 'testimonials', value: JSON.stringify(uiContent.testimonials) },
         { key: 'contact', value: JSON.stringify(uiContent.contact) },
-        { key: 'branding', value: JSON.stringify(uiContent.branding) },
+        { key: 'branding', value: JSON.stringify(brandingNormalized) },
       ];
 
       for (const item of contentToSave) {
@@ -167,7 +183,7 @@ export const Dashboard = () => {
         localStorage.setItem('cache:portfolio.winter', JSON.stringify(uiContent.portfolio.winter));
         localStorage.setItem('cache:testimonials', JSON.stringify(uiContent.testimonials));
         localStorage.setItem('cache:contact', JSON.stringify(uiContent.contact));
-        localStorage.setItem('cache:branding', JSON.stringify((uiContent as any).branding || {}));
+        localStorage.setItem('cache:branding', JSON.stringify(brandingNormalized || {}));
         window.dispatchEvent(new CustomEvent('content-updated', { detail: { persisted: true } }));
       } catch {}
 
@@ -643,8 +659,9 @@ export const Dashboard = () => {
                           const file = e.target.files?.[0];
                           if (!file) return;
                           try {
-                            const { url } = await authApi.upload(file);
-                            handleUiChange('branding', { ...uiContent.branding, logoUrl: url });
+                            const { url, path } = await authApi.upload(file);
+                            // Store relative path for portability; preview can still render due to backend URL usage elsewhere
+                            handleUiChange('branding', { ...uiContent.branding, logoUrl: path || url });
                             setHasUnsavedChanges(true);
                           } catch (err: any) {
                             alert(err?.response?.data?.error || 'Failed to upload logo.');
@@ -658,7 +675,7 @@ export const Dashboard = () => {
                   </div>
                   {(uiContent as any).branding?.logoUrl && (
                     <div className="pt-3">
-                      <img src={(uiContent as any).branding.logoUrl} alt="Logo preview" className="h-12 w-auto rounded border bg-white" />
+                      <img src={resolveAssetUrl((uiContent as any).branding.logoUrl)} alt="Logo preview" className="h-12 w-auto rounded border bg-white" />
                     </div>
                   )}
                 </div>

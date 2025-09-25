@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { Sun, Snowflake, Eye, LogOut, Edit3, Save } from 'lucide-react';
-import { contentApi } from '../../services/api';
+import { contentApi, resolveAssetUrl } from '../../services/api';
 import { Button } from '../ui/button';
 import { Switch } from '../ui/switch';
 import { Badge } from '../ui/badge';
@@ -118,7 +118,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
                 <div className="flex items-center space-x-3">
                   <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center overflow-hidden">
                     {branding.logoUrl ? (
-                      <img src={branding.logoUrl} alt={branding.name || 'Logo'} className="w-8 h-8 object-contain bg-white" />
+                      <img src={resolveAssetUrl(branding.logoUrl)} alt={branding.name || 'Logo'} className="w-8 h-8 object-contain bg-white" />
                     ) : (
                       <Edit3 className="w-5 h-5 text-primary-foreground" />
                     )}

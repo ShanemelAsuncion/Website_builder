@@ -4,7 +4,7 @@ import { Card, CardContent } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Snowflake, Sun, ArrowUp, Sparkles } from "lucide-react";
-import { contentApi } from "../services/api";
+import { contentApi, resolveAssetUrl } from "../services/api";
 
 interface SeasonalTutorialProps {
   season: "summer" | "winter";
@@ -140,7 +140,7 @@ export function SeasonalTutorial({ season, onSeasonToggle }: SeasonalTutorialPro
                   >
                     {branding.logoUrl ? (
                       <img
-                        src={branding.logoUrl}
+                        src={resolveAssetUrl(branding.logoUrl)}
                         alt={branding.name || "Brand Logo"}
                         className="w-12 h-12 object-contain"
                       />

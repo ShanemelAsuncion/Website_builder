@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Button } from "./ui/button";
 import { Switch } from "./ui/switch";
 import { Menu, Phone, Leaf, Snowflake } from "lucide-react";
-import { contentApi } from "../services/api";
+import { contentApi, resolveAssetUrl } from "../services/api";
 
 interface HeaderProps {
   season: 'summer' | 'winter';
@@ -84,7 +84,7 @@ export function Header({ season, onSeasonToggle }: HeaderProps) {
               <div className="flex items-center gap-3">
                 {branding.logoUrl && (
                   <img
-                    src={branding.logoUrl}
+                    src={resolveAssetUrl(branding.logoUrl)}
                     alt={branding.name || 'Company Logo'}
                     className="h-8 w-8 sm:h-9 sm:w-9 md:h-10 md:w-10 object-contain"
                   />
