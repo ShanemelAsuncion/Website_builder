@@ -1,5 +1,5 @@
 {
-  "API_BASE_URL": "https://website-builder-3hm1.onrender.com/api",
+  "API_BASE_URL": "/api",
   "USER_EMAIL": "shanemelasuncion@gmail.com",
   "SITE_NAME": "Jay's Blade and Snow Services"
 }
