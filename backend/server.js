@@ -34,6 +34,9 @@ import { sendContactEmail, sendVerificationEmail, sendPasswordResetEmail } from 
 import crypto from 'crypto';
 import sharp from 'sharp';
 import supabase from './supabaseClient.js';
+import dbAdapter, { contentAdapter, setSqliteDb } from './dbAdapter.js';
+import usersDb, { usersAdapter, setUsersSqliteDb } from './usersAdapter.js';
+import settingsDb, { settingsAdapter, setSettingsSqliteDb } from './settingsAdapter.js';
 
 // Configure dotenv
 dotenv.config();
@@ -44,10 +47,9 @@ const __dirname = dirname(__filename);
 const { Database } = sqlite3.verbose();
 
 const app = express();
-// Behind a reverse proxy (Render, Netlify, etc.), trust X-Forwarded-* headers
-// This prevents express-rate-limit from throwing ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
-// and ensures req.protocol/req.ip are derived correctly.
-app.set('trust proxy', true);
+// Behind a reverse proxy (Render), trust only the first proxy hop.
+// This satisfies express-rate-limit validation and still honors X-Forwarded-* headers.
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // Use a consistent JWT secret for development
@@ -59,6 +61,129 @@ console.log('Server starting with JWT configuration:', {
   JWT_SECRET: JWT_SECRET ? '*** (set)' : 'NOT SET!',
   JWT_EXPIRES_IN
 });
+
+// Settings routes (master only). Store site-wide public runtime values.
+// These return/store only non-sensitive keys, e.g., SITE_NAME, USER_EMAIL
+app.get('/api/settings', authenticateToken, requireMaster, async (_req, res) => {
+  try {
+    const rows = await settingsAdapter.getAll();
+    res.json(rows);
+  } catch (e) {
+    console.error('settings getAll error:', e);
+    res.status(500).json({ error: 'Failed to load settings' });
+  }
+});
+
+app.put('/api/settings', authenticateToken, requireMaster, async (req, res) => {
+  try {
+    const { items } = req.body || {};
+    if (!Array.isArray(items)) return res.status(400).json({ error: 'items array required' });
+    const results = [];
+    for (const it of items) {
+      if (!it || typeof it.key !== 'string' || typeof it.value === 'undefined') continue;
+      const valueJson = typeof it.value === 'string' ? it.value : JSON.stringify(it.value);
+      const saved = await settingsAdapter.upsert(it.key, valueJson);
+      results.push(saved);
+    }
+    res.json({ updated: results.length, items: results });
+  } catch (e) {
+    console.error('settings upsert error:', e);
+    res.status(500).json({ error: 'Failed to save settings' });
+  }
+});
+
+// Runtime config cache (in-memory, short-lived)
+let __runtimeConfigCache = { data: null, ts: 0 };
+const RUNTIME_CONFIG_TTL_MS = Number(process.env.RUNTIME_CONFIG_TTL_MS || 15000); // 15s
+
+async function fetchRuntimeConfig(backendOrigin) {
+  // 1) Try settings table (Supabase)
+  try {
+    if (process.env.USE_SUPABASE_DB && process.env.SUPABASE_URL) {
+      const { data, error } = await supabase.from('settings').select('*');
+      if (!error && Array.isArray(data) && data.length) {
+        const map = new Map();
+        for (const row of data) {
+          try {
+            const val = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+            map.set(row.key, val);
+          } catch {
+            map.set(row.key, row.value);
+          }
+        }
+        const siteName = map.get('SITE_NAME') || map.get('site_name') || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+        const userEmail = map.get('USER_EMAIL') || map.get('user_email') || process.env.CONTACT_RECIPIENT || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || '';
+        return { API_BASE_URL: `${backendOrigin}/api`, BACKEND_ORIGIN: backendOrigin, USER_EMAIL: userEmail, SITE_NAME: siteName };
+      }
+    }
+  } catch (e) {
+    console.warn('settings fetch failed:', e.message);
+  }
+
+  // 2) Try Supabase Storage JSON
+  try {
+    const bucket = process.env.SUPABASE_CONFIG_BUCKET;
+    const key = process.env.SUPABASE_CONFIG_KEY; // e.g., 'config/runtime.json'
+    if (bucket && key) {
+      const { data, error } = await supabase.storage.from(bucket).download(key);
+      if (!error && data) {
+        const text = await data.text();
+        const cfg = JSON.parse(text);
+        // Only expose non-sensitive keys
+        const siteName = cfg.SITE_NAME || cfg.site_name || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+        const userEmail = cfg.USER_EMAIL || cfg.user_email || process.env.CONTACT_RECIPIENT || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || '';
+        return { API_BASE_URL: `${backendOrigin}/api`, BACKEND_ORIGIN: backendOrigin, USER_EMAIL: userEmail, SITE_NAME: siteName };
+      }
+    }
+  } catch (e) {
+    console.warn('storage config fetch failed:', e.message);
+  }
+
+  // 3) Fallback to content keys (branding/contact)
+  let siteName = process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  let userEmail = process.env.CONTACT_RECIPIENT || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || '';
+  try {
+    const brandingRow = await contentAdapter.getByKey('branding');
+    if (brandingRow?.value) {
+      const branding = JSON.parse(brandingRow.value);
+      if (branding?.name) siteName = branding.name;
+    }
+  } catch {}
+  try {
+    const contactRow = await contentAdapter.getByKey('contact');
+    if (contactRow?.value) {
+      const contact = JSON.parse(contactRow.value);
+      if (contact?.email) userEmail = contact.email;
+    }
+  } catch {}
+  return { API_BASE_URL: `${backendOrigin}/api`, BACKEND_ORIGIN: backendOrigin, USER_EMAIL: userEmail, SITE_NAME: siteName };
+}
+
+// Public runtime configuration for frontend (after middleware so CORS applies)
+app.get('/api/config', async (req, res) => {
+  try {
+    const backendOrigin = getAssetBase(req);
+    // Short TTL cache to reduce DB/Storage pressure
+    const now = Date.now();
+    if (__runtimeConfigCache.data && now - __runtimeConfigCache.ts < RUNTIME_CONFIG_TTL_MS) {
+      res.set('Cache-Control', 'no-store, max-age=0');
+      res.set('Pragma', 'no-cache');
+      res.set('Expires', '0');
+      return res.json(__runtimeConfigCache.data);
+    }
+    const cfg = await fetchRuntimeConfig(backendOrigin);
+    __runtimeConfigCache = { data: cfg, ts: now };
+    res.set('Cache-Control', 'no-store, max-age=0');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+    return res.json(cfg);
+  } catch (e) {
+    console.error('config endpoint error:', e);
+    return res.status(500).json({ error: 'Failed to load config' });
+  }
+});
+
+// (moved /api/config endpoint below, after middleware)
 
 // Redirect helper for legacy emails that point to backend host
 app.get('/reset-password', (req, res) => {
@@ -86,15 +211,15 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-// Global basic rate limiter
+// Global basic rate limiter (raised limits to reduce 429s while keeping protection)
 const globalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  limit: 100,
+  limit: 1000, // allow more requests per IP per 15 mins
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 });
 // CORS allowlist: configurable via FRONTEND_ORIGINS (comma-separated), with sensible local defaults
-const DEFAULT_ORIGINS = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173'];
+const DEFAULT_ORIGINS = ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:5173', 'http://localhost:8888'];
 const FRONTEND_ORIGINS = (process.env.FRONTEND_ORIGINS || '')
   .split(',')
   .map(s => s.trim())
@@ -141,7 +266,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     const genericResponse = { message: 'If an account exists for this email, a reset link has been sent.' };
 
     // Find user
-    const user = await db.get('SELECT id, email FROM users WHERE email = ?', [email]);
+    const user = await usersAdapter.findByEmail(email);
     if (!user) {
       // Still respond OK without indicating existence
       try {
@@ -165,11 +290,8 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     // Create a short-lived token (e.g., 1 hour)
     const token = jwt.sign({ userId: user.id, purpose: 'password-reset' }, JWT_SECRET, { expiresIn: '1h' });
     const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
-    try {
-      // Upsert: delete existing tokens for user to keep only latest
-      await db.run('DELETE FROM password_reset_tokens WHERE userId = ?', [user.id]);
-    } catch {}
-    await db.run('INSERT INTO password_reset_tokens (userId, token, expiresAt) VALUES (?, ?, ?)', [user.id, token, expiresAt]);
+    try { await usersAdapter.clearTokensForUser(user.id); } catch {}
+    await usersAdapter.insertResetToken(user.id, token, expiresAt);
 
     const origin = req.headers.origin || process.env.SITE_URL || 'http://localhost:3000';
     const resetUrl = `${origin.replace(/\/$/, '')}/reset-password?token=${encodeURIComponent(token)}`;
@@ -213,17 +335,17 @@ app.post('/api/auth/reset-password', async (req, res) => {
     if (payload.purpose !== 'password-reset') return res.status(400).json({ error: 'Invalid token purpose' });
 
     // Ensure token exists in DB and not expired
-    const row = await db.get('SELECT * FROM password_reset_tokens WHERE token = ?', [token]);
+    const row = await usersAdapter.getResetToken(token);
     if (!row) return res.status(400).json({ error: 'Invalid or used token' });
     if (new Date(row.expiresAt) < new Date()) return res.status(400).json({ error: 'Token expired' });
 
     // Update user password
     const hashed = await bcrypt.hash(newPassword, 10);
-    await db.run('UPDATE users SET password = ? WHERE id = ?', [hashed, row.userId]);
+    await usersAdapter.updatePassword(row.userId, hashed);
 
     // Invalidate token
-    await db.run('DELETE FROM password_reset_tokens WHERE id = ?', [row.id]);
-
+    await usersAdapter.deleteResetTokenById(row.id);
+    
     return res.json({ message: 'Password has been reset successfully.' });
   } catch (e) {
     console.error('reset-password error:', e);
@@ -231,163 +353,24 @@ app.post('/api/auth/reset-password', async (req, res) => {
   }
 });
 
-// Static hosting for uploaded files
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir);
-}
-app.use('/uploads', express.static(uploadsDir));
-
-// Configure multer storage for uploads
-const storage = multer.diskStorage({
-  destination: function (_req, _file, cb) {
-    cb(null, uploadsDir);
-  },
-  filename: function (_req, file, cb) {
-    const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    const ext = path.extname(file.originalname) || '';
-    cb(null, `${unique}${ext}`);
-  }
-});
+// Configure multer in-memory storage for uploads (no local filesystem persistence)
 const upload = multer({ 
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
 });
 
-// Uploads directory capacity limits (to protect free tier quotas)
-const UPLOADS_MAX_BYTES = Number(process.env.UPLOADS_MAX_BYTES || 20 * 1024 * 1024); // 20MB default
-const UPLOADS_KEEP_MIN = Number(process.env.UPLOADS_KEEP_MIN || 10); // always keep at least N newest files
-
-// Helpers for uploads maintenance
-function getAllUploadFiles() {
-  try {
-    const names = fs.readdirSync(uploadsDir).filter(n => !n.startsWith('.'));
-    return names.map(name => ({ name, abs: path.join(uploadsDir, name) }))
-      .filter(f => {
-        try { return fs.statSync(f.abs).isFile(); } catch { return false; }
-      });
-  } catch {
-    return [];
-  }
-}
-
-function getUploadsDirSize() {
-  return getAllUploadFiles().reduce((sum, f) => {
-    try { return sum + fs.statSync(f.abs).size; } catch { return sum; }
-  }, 0);
-}
-
-function hashFileSync(absPath) {
-  const hash = crypto.createHash('sha256');
-  const buf = fs.readFileSync(absPath);
-  hash.update(buf);
-  return hash.digest('hex');
-}
-
-async function getReferencedUploadFilenames() {
-  // Scan the content table JSON for any '/uploads/<file>' references
-  const rows = await db.all('SELECT key, value FROM content');
-  const refs = new Set();
-  const regex = /\/(?:uploads)\/(\S+?)(?=["'\]\s}>)])/g; // capture filenames after /uploads/
-  for (const row of rows) {
-    const text = String(row.value || '');
-    let m;
-    while ((m = regex.exec(text)) !== null) {
-      if (m[1]) refs.add(m[1]);
-    }
-    // Also try to parse JSON and look for logoUrl-like fields
-    try {
-      const parsed = JSON.parse(row.value);
-      const stack = [parsed];
-      while (stack.length) {
-        const cur = stack.pop();
-        if (typeof cur === 'string') {
-          const u = cur;
-          const match = u.match(/\/(?:uploads)\/([^\s"']+)/);
-          if (match && match[1]) refs.add(match[1]);
-        } else if (Array.isArray(cur)) {
-          for (const v of cur) stack.push(v);
-        } else if (cur && typeof cur === 'object') {
-          for (const k of Object.keys(cur)) stack.push(cur[k]);
-        }
-      }
-    } catch {}
-  }
-  return refs;
-}
-
-async function cleanupUploadsInternal({ dryRun = false } = {}) {
-  const report = {
-    totalBeforeBytes: getUploadsDirSize(),
-    deletedUnreferenced: [],
-    deletedDuplicates: [],
-    kept: [],
-    errors: [],
-  };
-
-  const files = getAllUploadFiles()
-    .map(f => ({ ...f, stat: fs.statSync(f.abs) }))
-    .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs); // newest first
-
-  // Build referenced set
-  let referenced = new Set();
-  try {
-    referenced = await getReferencedUploadFilenames();
-  } catch (e) {
-    report.errors.push(`Failed to read references: ${e.message}`);
-  }
-
-  // Detect duplicates by hash (keep newest copy)
-  const seenByHash = new Map();
-  for (const f of files) {
-    try {
-      const h = hashFileSync(f.abs);
-      if (seenByHash.has(h)) {
-        // duplicate
-        if (!dryRun) fs.unlinkSync(f.abs);
-        report.deletedDuplicates.push(f.name);
-        continue;
-      }
-      seenByHash.set(h, f.name);
-    } catch (e) {
-      report.errors.push(`Hash error for ${f.name}: ${e.message}`);
-    }
-  }
-
-  // Recompute files list after duplicate removal
-  const postDupFiles = getAllUploadFiles().map(f => ({ ...f, stat: fs.statSync(f.abs) }));
-
-  // Remove unreferenced files (preserve newest UPLOADS_KEEP_MIN files as safety)
-  const sorted = [...postDupFiles].sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs);
-  const preserve = new Set(sorted.slice(0, Math.max(0, UPLOADS_KEEP_MIN)).map(f => f.name));
-  for (const f of sorted) {
-    if (preserve.has(f.name)) { report.kept.push(f.name); continue; }
-    if (!referenced.has(f.name)) {
-      try {
-        if (!dryRun) fs.unlinkSync(f.abs);
-        report.deletedUnreferenced.push(f.name);
-      } catch (e) {
-        report.errors.push(`Delete error for ${f.name}: ${e.message}`);
-      }
-    } else {
-      report.kept.push(f.name);
-    }
-  }
-
-  report.totalAfterBytes = getUploadsDirSize();
-  return report;
-}
+// Remove local uploads helpers; persistence is handled entirely by Supabase Storage
 
 // Per-route strict limiters
 const contactLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 hour
-  limit: 20,
+  limit: 60, // allow up to 60 submissions/hour per IP
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 });
 const uploadLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  limit: 20,
+  limit: 60, // allow up to 60 uploads/hour per IP
   standardHeaders: 'draft-7',
   legacyHeaders: false,
 });
@@ -463,6 +446,10 @@ async function initializeDatabase() {
     `);
 
     console.log('Connected to SQLite database and initialized tables');
+    // Register with adapters so routes can fall back to SQLite when not using Supabase
+    try { setSqliteDb(db); } catch {}
+    try { setUsersSqliteDb(db); } catch {}
+    try { setSettingsSqliteDb(db); } catch {}
     return db;
   } catch (err) {
     console.error('Error initializing database:', err);
@@ -528,49 +515,44 @@ async function seedDatabase() {
   }
 }
 
-// Create default admin user if it doesn't exist
+// Create default admin users only when explicitly allowed via env, never with hardcoded credentials
 async function createDefaultAdmin() {
   try {
-    const adminEmail = 'admin@example.com';
-    const adminPassword = 'admin123';
-    const masterEmail = 'shanemelasuncion@gmail.com';
-    const masterPassword = 'pass123';
-    
-    // Check if admin user already exists
-    const existingAdmin = await db.get('SELECT * FROM users WHERE email = ?', [adminEmail]);
-    
-    if (!existingAdmin) {
-      console.log('Creating default admin user...');
-      
-      // Hash the password
-      const hashedPassword = await bcrypt.hash(adminPassword, 10);
-      
-      // Create the admin user
-      await db.run(
-        'INSERT INTO users (email, password) VALUES (?, ?)',
-        [adminEmail, hashedPassword]
-      );
-      
-      console.log('Default admin user created successfully.');
-      console.log('Email: admin@example.com');
-      console.log('Password: admin123');
-    } else {
-      console.log('Admin user already exists.');
+    const allow = String(process.env.ALLOW_DEFAULT_ADMIN || '').toLowerCase() === 'true';
+    if (!allow) {
+      return; // do nothing unless enabled
     }
 
-    // Ensure master admin
+    const adminEmail = process.env.ADMIN_EMAIL;
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    const masterEmail = process.env.MASTER_EMAIL;
+    const masterPassword = process.env.MASTER_PASSWORD;
+
+    if (!adminEmail || !adminPassword || !masterEmail || !masterPassword) {
+      console.warn('ALLOW_DEFAULT_ADMIN is true but admin/master credentials are not fully set in env; skipping default admin creation.');
+      return;
+    }
+
+    // Create normal admin if missing
+    const existingAdmin = await db.get('SELECT * FROM users WHERE email = ?', [adminEmail]);
+    if (!existingAdmin) {
+      const hashedPassword = await bcrypt.hash(adminPassword, 12);
+      await db.run('INSERT INTO users (email, password) VALUES (?, ?)', [adminEmail, hashedPassword]);
+      console.log('Default admin user ensured.');
+    }
+
+    // Ensure master admin exists and is flagged
     const existingMaster = await db.get('SELECT * FROM users WHERE email = ?', [masterEmail]);
     if (!existingMaster) {
-      console.log('Creating master admin user...');
-      const hashedPassword = await bcrypt.hash(masterPassword, 10);
+      const hashedPassword = await bcrypt.hash(masterPassword, 12);
       await db.run('INSERT INTO users (email, password, isMaster) VALUES (?, ?, 1)', [masterEmail, hashedPassword]);
-      console.log('Master admin created:', masterEmail);
+      console.log('Master admin ensured.');
     } else if (!existingMaster.isMaster) {
       await db.run('UPDATE users SET isMaster = 1 WHERE id = ?', [existingMaster.id]);
-      console.log('Existing user promoted to master admin:', masterEmail);
+      console.log('Existing user promoted to master admin.');
     }
   } catch (err) {
-    console.error('Error creating default admin user:', err);
+    console.error('Error ensuring default admin users:', err);
   }
 }
 
@@ -623,7 +605,7 @@ const authenticateToken = (req, res, next) => {
 // Master-only middleware
 const requireMaster = async (req, res, next) => {
   try {
-    const user = await db.get('SELECT * FROM users WHERE id = ?', [req.user.id]);
+    const user = await usersAdapter.getById(req.user.id);
     if (!user || !user.isMaster) {
       return res.status(403).json({ error: 'Master admin privileges required' });
     }
@@ -664,7 +646,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     // Check if user already exists
-    const existingUser = await db.get('SELECT * FROM users WHERE email = ?', [email]);
+    const existingUser = await usersAdapter.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({ error: 'User already exists' });
     }
@@ -673,15 +655,12 @@ app.post('/api/auth/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     
     // Create user
-    const result = await db.run(
-      'INSERT INTO users (email, password) VALUES (?, ?)',
-      [email, hashedPassword]
-    );
+    const userId = await usersAdapter.createUser(email, hashedPassword, false);
     
     // Generate JWT with consistent options
     const token = jwt.sign(
       { 
-        id: result.lastID, 
+        id: userId, 
         email 
       }, 
       JWT_SECRET, 
@@ -692,14 +671,14 @@ app.post('/api/auth/register', async (req, res) => {
     );
     
     console.log('Generated token for new user:', { 
-      userId: result.lastID, 
+      userId, 
       email,
       expiresIn: JWT_EXPIRES_IN
     });
     
     res.status(201).json({ 
       token,
-      user: { id: result.lastID, email }
+      user: { id: userId, email }
     });
   } catch (error) {
     console.error('Registration error:', error);
@@ -716,7 +695,7 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'Current and new passwords are required' });
     }
 
-    const user = await db.get('SELECT * FROM users WHERE id = ?', [userId]);
+    const user = await usersAdapter.getById(userId);
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
@@ -727,7 +706,7 @@ app.post('/api/auth/change-password', authenticateToken, async (req, res) => {
     }
 
     const hashedNewPassword = await bcrypt.hash(newPassword, 10);
-    await db.run('UPDATE users SET password = ? WHERE id = ?', [hashedNewPassword, userId]);
+    await usersAdapter.updatePassword(userId, hashedNewPassword);
     res.status(200).json({ message: 'Password updated successfully' });
   } catch (error) {
     console.error('Change password error:', error);
@@ -743,7 +722,7 @@ try {
   }
 
   // Find user
-  const user = await db.get('SELECT * FROM users WHERE email = ?', [email]);
+  const user = await usersAdapter.findByEmail(email);
   if (!user) {
   return res.status(401).json({ error: 'Invalid credentials' });
   }
@@ -787,11 +766,11 @@ app.post('/api/auth/request-email-change', authenticateToken, async (req, res) =
   try {
     const { newEmail } = req.body;
     if (!newEmail) return res.status(400).json({ error: 'New email is required' });
-    const existing = await db.get('SELECT id FROM users WHERE email = ?', [newEmail]);
+    const existing = await usersAdapter.findByEmail(newEmail);
     if (existing) return res.status(400).json({ error: 'Email already in use' });
     const token = jwt.sign({ userId: req.user.id, newEmail }, JWT_SECRET, { expiresIn: '24h' });
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-    await db.run('INSERT INTO email_change_requests (userId, newEmail, token, expiresAt) VALUES (?, ?, ?, ?)', [req.user.id, newEmail, token, expiresAt]);
+    await usersAdapter.insertEmailChange(req.user.id, newEmail, token, expiresAt);
     const verifyUrl = `${req.protocol}://${req.get('host')}/api/auth/verify-email-change?token=${encodeURIComponent(token)}`;
     // Pull branding from content table
     let brandName, logoUrl;
@@ -826,12 +805,12 @@ app.get('/api/auth/verify-email-change', async (req, res) => {
     } catch (e) {
       return res.status(400).json({ error: 'Invalid or expired token' });
     }
-    const row = await db.get('SELECT * FROM email_change_requests WHERE token = ?', [token]);
+    const row = await usersAdapter.getEmailChangeByToken(token);
     if (!row) return res.status(400).json({ error: 'Invalid token' });
     const now = new Date();
     if (new Date(row.expiresAt) < now) return res.status(400).json({ error: 'Token expired' });
-    await db.run('UPDATE users SET email = ? WHERE id = ?', [row.newEmail, row.userId]);
-    await db.run('DELETE FROM email_change_requests WHERE id = ?', [row.id]);
+    await usersAdapter.updateUserEmail(row.userId, row.newEmail);
+    await usersAdapter.deleteEmailChangeById(row.id);
     res.json({ message: 'Email verified and updated successfully.' });
   } catch (e) {
     console.error('verify-email-change error:', e);
@@ -842,7 +821,7 @@ app.get('/api/auth/verify-email-change', async (req, res) => {
 // Master admin: manage users (after auth + email routes)
 app.get('/api/admin/users', authenticateToken, requireMaster, async (_req, res) => {
   try {
-    const rows = await db.all('SELECT id, email, isMaster, createdAt FROM users ORDER BY id ASC');
+    const rows = await usersAdapter.listUsers();
     res.json(rows);
   } catch (e) {
     res.status(500).json({ error: 'Failed to fetch users' });
@@ -852,11 +831,11 @@ app.post('/api/admin/users', authenticateToken, requireMaster, async (req, res) 
   try {
     const { email, password, isMaster } = req.body;
     if (!email || !password) return res.status(400).json({ error: 'Email and password are required' });
-    const existing = await db.get('SELECT id FROM users WHERE email = ?', [email]);
+    const existing = await usersAdapter.findByEmail(email);
     if (existing) return res.status(400).json({ error: 'User already exists' });
     const hashed = await bcrypt.hash(password, 10);
-    const result = await db.run('INSERT INTO users (email, password, isMaster) VALUES (?, ?, ?)', [email, hashed, isMaster ? 1 : 0]);
-    res.status(201).json({ id: result.lastID, email, isMaster: !!isMaster });
+    const created = await usersAdapter.createUserAdmin(email, hashed, !!isMaster);
+    res.status(201).json(created);
   } catch (e) {
     res.status(500).json({ error: 'Failed to create user' });
   }
@@ -865,26 +844,19 @@ app.put('/api/admin/users/:id', authenticateToken, requireMaster, async (req, re
   try {
     const { id } = req.params;
     const { email, password, isMaster } = req.body;
-    const user = await db.get('SELECT * FROM users WHERE id = ?', [id]);
+    const user = await usersAdapter.getById(id);
     if (!user) return res.status(404).json({ error: 'User not found' });
     if (typeof isMaster !== 'undefined' && user.isMaster && !isMaster) {
-      const masters = await db.get('SELECT COUNT(*) as c FROM users WHERE isMaster = 1');
+      const masters = await usersAdapter.countMasters();
       if (masters.c <= 1) {
         return res.status(400).json({ error: 'Cannot demote the last master admin' });
       }
     }
-    const fields = [];
-    const values = [];
-    if (email) { fields.push('email = ?'); values.push(email); }
-    if (typeof isMaster !== 'undefined') { fields.push('isMaster = ?'); values.push(isMaster ? 1 : 0); }
+    const payload = { email, isMaster };
     if (password) {
-      const hashed = await bcrypt.hash(password, 10);
-      fields.push('password = ?'); values.push(hashed);
+      payload.passwordHash = await bcrypt.hash(password, 10);
     }
-    if (fields.length === 0) return res.status(400).json({ error: 'No fields to update' });
-    values.push(id);
-    await db.run(`UPDATE users SET ${fields.join(', ')}, createdAt = createdAt WHERE id = ?`, values);
-    const updated = await db.get('SELECT id, email, isMaster, createdAt FROM users WHERE id = ?', [id]);
+    const updated = await usersAdapter.updateUserAdmin(id, payload);
     res.json(updated);
   } catch (e) {
     res.status(500).json({ error: 'Failed to update user' });
@@ -896,14 +868,14 @@ app.delete('/api/admin/users/:id', authenticateToken, requireMaster, async (req,
     if (Number(id) === Number(req.user.id)) {
       return res.status(400).json({ error: 'You cannot delete your own account' });
     }
-    const target = await db.get('SELECT isMaster FROM users WHERE id = ?', [id]);
+    const target = await usersAdapter.getById(id);
     if (target && target.isMaster) {
-      const masters = await db.get('SELECT COUNT(*) as c FROM users WHERE isMaster = 1');
+      const masters = await usersAdapter.countMasters();
       if (masters.c <= 1) {
         return res.status(400).json({ error: 'Cannot delete the last master admin' });
       }
     }
-    await db.run('DELETE FROM users WHERE id = ?', [id]);
+    await usersAdapter.deleteUser(id);
     res.status(204).send();
   } catch (e) {
     res.status(500).json({ error: 'Failed to delete user' });
@@ -912,21 +884,21 @@ app.delete('/api/admin/users/:id', authenticateToken, requireMaster, async (req,
 
 // Content management routes
 // Public endpoint to fetch all content (no authentication required)
-app.get('/api/content', async (req, res) => {
-try {
-  const rows = await db.all('SELECT * FROM content');
-  res.json(rows);
-} catch (error) {
-  console.error('Error fetching content:', error);
-  res.status(500).json({ error: 'Failed to fetch content' });
-}
+app.get('/api/content', async (_req, res) => {
+  try {
+    const rows = await contentAdapter.getAll();
+    res.json(rows);
+  } catch (error) {
+    console.error('Error fetching content:', error);
+    res.status(500).json({ error: 'Failed to fetch content' });
+  }
 });
 
 // Get single content item by ID
 app.get('/api/content/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const row = await db.get('SELECT * FROM content WHERE id = ?', [id]);
+    const row = await contentAdapter.getById(id);
     if (!row) {
       return res.status(404).json({ error: 'Content not found' });
     }
@@ -946,123 +918,60 @@ app.put('/api/content/:id', authenticateToken, async (req, res) => {
     if (!key || value === undefined || !type) {
       return res.status(400).json({ error: 'Key, value, and type are required' });
     }
-    
-    // Check if content with this ID exists
-    const existing = await db.get('SELECT * FROM content WHERE id = ?', [id]);
-    if (existing) {
-      await db.run(
-        'UPDATE content SET key = ?, value = ?, type = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-        [key, value, type, id]
-      );
-      const updated = await db.get('SELECT * FROM content WHERE id = ?', [id]);
-      return res.json(updated);
-    }
-
-    // If not found by ID, try upsert by KEY to avoid UNIQUE violations
-    const existingByKey = await db.get('SELECT * FROM content WHERE key = ?', [key]);
-    if (existingByKey) {
-      await db.run(
-        'UPDATE content SET value = ?, type = ?, updatedAt = CURRENT_TIMESTAMP WHERE key = ?',
-        [value, type, key]
-      );
-      const updated = await db.get('SELECT * FROM content WHERE key = ?', [key]);
-      return res.json(updated);
-    }
-
-    // Create new content
-    const result = await db.run(
-      'INSERT INTO content (key, value, type) VALUES (?, ?, ?)',
-      [key, value, type]
-    );
-    const newItem = await db.get('SELECT * FROM content WHERE id = ?', [result.lastID]);
-    return res.status(201).json(newItem);
+    const updated = await contentAdapter.upsertByIdOrKey(id, key, value, type);
+    return res.json(updated);
   } catch (error) {
     console.error('Error saving content:', error);
-    if (error.message.includes('UNIQUE constraint failed')) {
+    if (error.message && error.message.includes('UNIQUE')) {
       return res.status(400).json({ error: 'Content with this key already exists' });
     }
     res.status(500).json({ error: 'Failed to save content' });
   }
 });
 
+// ...
 // Upload endpoint for images (auth required)
 app.post('/api/upload', authenticateToken, uploadLimiter, upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
-    // Optimize image using Sharp -> convert to WebP, resize for reasonable display, and reduce quality
-    let outName = req.file.filename;
-    let optimizedPath = path.join(uploadsDir, req.file.filename);
+    // Mimetype whitelist to images only
+    const allowed = ['image/jpeg','image/png','image/webp','image/gif'];
+    if (!allowed.includes(req.file.mimetype)) {
+      return res.status(400).json({ error: 'Unsupported file type' });
+    }
+    // Optimize and convert to WebP directly from buffer
+    let outputBuffer = req.file.buffer;
+    let contentType = req.file.mimetype || 'application/octet-stream';
     try {
-      const inputPath = optimizedPath;
-      const base = path.parse(req.file.filename).name;
-      const outFile = `${base}.webp`;
-      const outPath = path.join(uploadsDir, outFile);
-
-      // Read & process
-      await sharp(inputPath)
-        .rotate() // respect EXIF
+      outputBuffer = await sharp(req.file.buffer)
+        .rotate()
         .resize({ width: 1920, withoutEnlargement: true })
         .webp({ quality: 80 })
-        .toFile(outPath);
-
-      // Replace original with optimized version
-      try { fs.unlinkSync(inputPath); } catch {}
-      outName = outFile;
-      optimizedPath = outPath;
+        .toBuffer();
+      contentType = 'image/webp';
     } catch (e) {
-      console.warn('Image optimization failed; keeping original:', e.message);
+      console.warn('Image optimization failed; uploading original buffer:', e.message);
     }
 
-    // Attempt to upload to Supabase Storage
+    // Upload to Supabase Storage
     const bucket = process.env.SUPABASE_BUCKET || 'uploads';
-    let publicUrl = '';
-    try {
-      const fileData = fs.readFileSync(optimizedPath);
-      const storagePath = `${Date.now()}-${Math.round(Math.random() * 1e9)}.webp`;
-      const { error: upErr } = await supabase
-        .storage
-        .from(bucket)
-        .upload(storagePath, fileData, {
-          contentType: 'image/webp',
-          upsert: false,
-        });
-      if (upErr) throw upErr;
-      const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
-      publicUrl = data.publicUrl;
-      // Remove local file after successful remote upload
-      try { fs.unlinkSync(optimizedPath); } catch {}
-    } catch (e) {
-      console.warn('Supabase upload failed; serving from local uploads:', e.message);
+    const storagePath = `${Date.now()}-${Math.round(Math.random() * 1e9)}.${contentType === 'image/webp' ? 'webp' : (path.extname(req.file.originalname).slice(1) || 'bin')}`;
+    const { error: upErr } = await supabase
+      .storage
+      .from(bucket)
+      .upload(storagePath, outputBuffer, {
+        contentType,
+        upsert: false,
+      });
+    if (upErr) {
+      console.error('Supabase upload error:', upErr);
+      return res.status(500).json({ error: 'Failed to upload file' });
     }
-
-    const relative = `/uploads/${outName}`;
-    const absolute = `${req.protocol}://${req.get('host')}${relative}`;
-    // Enforce total uploads directory size limit. Try to auto-purge unreferenced files if over.
-    try {
-      let total = getUploadsDirSize();
-      if (total > UPLOADS_MAX_BYTES) {
-        // attempt auto-clean (non-dry-run)
-        await cleanupUploadsInternal({ dryRun: false });
-        total = getUploadsDirSize();
-      }
-      if (total > UPLOADS_MAX_BYTES) {
-        // still over: delete the just-uploaded file and reject
-        try { fs.unlinkSync(path.join(uploadsDir, req.file.filename)); } catch {}
-        return res.status(413).json({ error: 'Uploads storage limit exceeded' });
-      }
-    } catch (e) {
-      console.warn('Uploads size enforcement error:', e.message);
-    }
-
-    // Prefer Supabase public URL when available
-    if (publicUrl) {
-      return res.status(201).json({ url: publicUrl, path: publicUrl });
-    }
-
-    // Fallback to local file serving
-    return res.status(201).json({ url: absolute, path: relative });
+    const { data } = supabase.storage.from(bucket).getPublicUrl(storagePath);
+    const publicUrl = data.publicUrl;
+    return res.status(201).json({ url: publicUrl, path: publicUrl });
   } catch (error) {
     console.error('Upload error:', error);
     return res.status(500).json({ error: 'Failed to upload file' });
@@ -1070,45 +979,21 @@ app.post('/api/upload', authenticateToken, uploadLimiter, upload.single('file'),
 });
 
 // Admin endpoints to inspect and clean uploads
-app.get('/api/admin/uploads/status', authenticateToken, requireMaster, async (_req, res) => {
-  try {
-    const files = getAllUploadFiles();
-    const total = getUploadsDirSize();
-    const referenced = await getReferencedUploadFilenames();
-    res.json({
-      count: files.length,
-      totalBytes: total,
-      maxBytes: UPLOADS_MAX_BYTES,
-      keepMin: UPLOADS_KEEP_MIN,
-      referencedCount: referenced.size,
-      files: files.map(f => ({ name: f.name, size: fs.statSync(f.abs).size, referenced: referenced.has(f.name) })),
-    });
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to compute uploads status' });
-  }
-});
-
-app.post('/api/admin/uploads/cleanup', authenticateToken, requireMaster, async (req, res) => {
-  try {
-    const dryRun = !!req.query.dryRun || !!req.body?.dryRun;
-    const report = await cleanupUploadsInternal({ dryRun });
-    res.json({ dryRun, ...report });
-  } catch (e) {
-    res.status(500).json({ error: 'Failed to cleanup uploads' });
-  }
-});
+// Uploads admin endpoints removed: storage is managed by Supabase
 
 // Reset all content
 app.post('/api/content/reset', authenticateToken, async (req, res) => {
   try {
-    // Clear the content table
-    await db.run('DELETE FROM content');
-    console.log('Content table cleared.');
-
-    // Re-seed the database
-    await seedDatabase();
-
-    res.status(200).json({ message: 'Content has been reset successfully.' });
+    // Try adapter reset (Supabase); fallback to SQLite seed
+    try {
+      await contentAdapter.resetWithSeed(initialContent);
+      return res.status(200).json({ message: 'Content has been reset successfully.' });
+    } catch (e) {
+      // Fallback to SQLite legacy
+      await db.run('DELETE FROM content');
+      await seedDatabase();
+      return res.status(200).json({ message: 'Content has been reset successfully.' });
+    }
   } catch (error) {
     console.error('Error resetting content:', error);
     res.status(500).json({ error: 'Failed to reset content' });
@@ -1119,7 +1004,7 @@ app.post('/api/content/reset', authenticateToken, async (req, res) => {
 app.delete('/api/content/:id', authenticateToken, async (req, res) => {
   try {
     const { id } = req.params;
-    await db.run('DELETE FROM content WHERE id = ?', [id]);
+    await contentAdapter.deleteById(id);
     res.status(204).send();
   } catch (error) {
     console.error('Error deleting content:', error);
@@ -1137,7 +1022,7 @@ app.get('/api/health/branding', async (req, res) => {
   try {
     let branding = {};
     try {
-      const row = await db.get("SELECT value FROM content WHERE key = 'branding'");
+      const row = await contentAdapter.getByKey('branding');
       if (row?.value) {
         branding = JSON.parse(row.value);
       }
@@ -1147,15 +1032,7 @@ app.get('/api/health/branding', async (req, res) => {
     const absoluteLogoUrl = logoUrl && !/^https?:\/\//i.test(logoUrl)
       ? `${backendOrigin}${logoUrl.startsWith('/') ? logoUrl : '/' + logoUrl}`
       : logoUrl;
-    // Check if local file exists when using a relative path
-    let fileExists = null;
-    try {
-      if (logoUrl && !/^https?:\/\//i.test(logoUrl)) {
-        const fsPath = path.join(uploadsDir, path.basename(logoUrl));
-        fileExists = fs.existsSync(fsPath);
-      }
-    } catch {}
-    return res.json({ branding, backendOrigin, logoUrl, absoluteLogoUrl, fileExists });
+    return res.json({ branding, backendOrigin, logoUrl, absoluteLogoUrl });
   } catch (e) {
     console.error('health/branding error:', e);
     return res.status(500).json({ error: 'Failed to load branding health' });

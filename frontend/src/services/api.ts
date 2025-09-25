@@ -1,8 +1,13 @@
 import axios from 'axios';
 
-// Read API base from Vite env (set this on Netlify). Fallback to localhost for dev.
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:5000/api';
-const BACKEND_BASE_URL = API_BASE_URL.replace(/\/?api\/?$/, '');
+// API base URL is set at runtime via setApiBaseUrl. Default to local dev.
+let API_BASE_URL = 'http://localhost:5000/api';
+let BACKEND_BASE_URL = API_BASE_URL.replace(/\/?api\/?$/, '');
+export const setApiBaseUrl = (base: string) => {
+  API_BASE_URL = base.replace(/\/$/, '');
+  BACKEND_BASE_URL = API_BASE_URL.replace(/\/?api\/?$/, '');
+  api.defaults.baseURL = API_BASE_URL;
+};
 
 // Create axios instance with default config
 const api = axios.create({
@@ -28,11 +33,35 @@ api.interceptors.request.use(
 // Add response interceptor to handle errors
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response?.status === 401) {
-      // Token expired or invalid, redirect to login
+  async (error) => {
+    const status = error?.response?.status;
+    const cfg = error?.config || {};
+    // Retry on 429/503 with exponential backoff (max 2 retries)
+    if (status === 401) {
       localStorage.removeItem('token');
       window.location.href = '/admin/login';
+      return Promise.reject(error);
+    }
+    if ((status === 429 || status === 503) && cfg && !cfg.__retryDisabled) {
+      cfg.__retryCount = (cfg.__retryCount || 0) as number;
+      const maxRetries = 2;
+      if (cfg.__retryCount < maxRetries) {
+        cfg.__retryCount++;
+        // Honor Retry-After if present
+        let delayMs = 0;
+        const retryAfter = error?.response?.headers?.['retry-after'];
+        if (retryAfter) {
+          const asNum = Number(retryAfter);
+          if (!isNaN(asNum)) delayMs = asNum * 1000;
+        }
+        if (!delayMs) {
+          // base 500ms * 2^retries with jitter
+          const base = 500 * Math.pow(2, cfg.__retryCount - 1);
+          delayMs = base + Math.floor(Math.random() * 200);
+        }
+        await new Promise((r) => setTimeout(r, delayMs));
+        return api(cfg);
+      }
     }
     return Promise.reject(error);
   }

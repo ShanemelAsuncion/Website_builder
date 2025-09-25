@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
 import { contentApi, authApi, adminApi, resolveAssetUrl } from '../../services/api';
+import { settingsService } from '../../services/settings';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
@@ -53,6 +54,7 @@ export const Dashboard = () => {
   const [emailChange, setEmailChange] = useState('');
   const [users, setUsers] = useState<Array<{ id: number; email: string; isMaster: number; createdAt: string }>>([]);
   const [newUser, setNewUser] = useState<{ email: string; password: string; isMaster: boolean }>({ email: '', password: '', isMaster: false });
+  const [runtimeSettings, setRuntimeSettings] = useState<{ siteName: string; userEmail: string }>({ siteName: '', userEmail: '' });
   
   const [uiContent, setUiContent] = useState({
     hero: {
@@ -120,6 +122,16 @@ export const Dashboard = () => {
           try {
             const list = await adminApi.listUsers();
             setUsers(list);
+          } catch {}
+          // Load runtime settings for master users
+          try {
+            const items = await settingsService.getAll();
+            const map = new Map(items.map(i => [i.key, i.value]));
+            const siteNameRaw = map.get('SITE_NAME');
+            const userEmailRaw = map.get('USER_EMAIL');
+            const siteName = (() => { try { return JSON.parse(siteNameRaw || ''); } catch { return siteNameRaw || ''; } })();
+            const userEmail = (() => { try { return JSON.parse(userEmailRaw || ''); } catch { return userEmailRaw || ''; } })();
+            setRuntimeSettings({ siteName: siteName || '', userEmail: userEmail || '' });
           } catch {}
         }
       } catch {}
@@ -391,7 +403,6 @@ export const Dashboard = () => {
           <Card>
             <CardHeader>
               <CardTitle>Services</CardTitle>
-              <Button size="sm" onClick={addService}><Plus className="w-4 h-4 mr-2" />Add Service</Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {uiContent.services[season].map(service => (
@@ -485,6 +496,10 @@ export const Dashboard = () => {
                   </div>
                 </div>
               ))}
+
+              <div className="pt-4">
+                <Button size="sm" onClick={addService}><Plus className="w-4 h-4 mr-2" />Add Service</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -494,7 +509,6 @@ export const Dashboard = () => {
           <Card>
             <CardHeader>
               <CardTitle>Portfolio</CardTitle>
-              <Button size="sm" onClick={addPortfolioItem}><Plus className="w-4 h-4 mr-2" />Add Project</Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {uiContent.portfolio[season].map(p => (
@@ -558,7 +572,6 @@ export const Dashboard = () => {
           <Card>
             <CardHeader>
               <CardTitle>Testimonials</CardTitle>
-              <Button size="sm" onClick={addTestimonial}><Plus className="w-4 h-4 mr-2" />Add Testimonial</Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {uiContent.testimonials.map(t => (
@@ -678,16 +691,6 @@ export const Dashboard = () => {
                       <img src={resolveAssetUrl((uiContent as any).branding.logoUrl)} alt="Logo preview" className="h-12 w-auto rounded border bg-white" />
                     </div>
                   )}
-                </div>
-              </CardContent>
-            </Card>
-            {/* Account */}
-            <Card>
-              <CardHeader><CardTitle>Account</CardTitle></CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label>Current Admin Email</Label>
-                  <Input value={profile?.email || ''} readOnly />
                 </div>
                 <div>
                   <Label>Change Email (verification required)</Label>

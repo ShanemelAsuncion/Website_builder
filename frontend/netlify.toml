@@ -1,6 +1,6 @@
 [build]
   command = "npm run build"
-  publish = "build"
+  publish = "dist"
 
 [build.environment]
   NODE_VERSION = "20"
@@ -10,3 +10,9 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+[dev]
+  command = "npm run dev"
+  port = 8888        # Netlify dev server port
+  targetPort = 3000  # Vite dev server port
+

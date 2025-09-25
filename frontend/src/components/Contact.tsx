@@ -7,8 +7,7 @@ import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Phone, Mail, MapPin, Clock, Send, CheckCircle, Loader2, Facebook } from "lucide-react";
 import { motion } from "motion/react";
-import axios from 'axios';
-import { contentApi } from "../services/api";
+import api, { contentApi } from "../services/api";
 
 interface ContactProps {
   season: 'summer' | 'winter';
@@ -72,7 +71,7 @@ export function Contact({ season }: ContactProps) {
     setResponseMsg('');
 
     try {
-      const response = await axios.post<{ message: string }>('http://localhost:5000/api/contact', formData);
+      const response = await api.post<{ message: string }>('/contact', formData);
       setStatus('success');
       setResponseMsg(response.data.message);
       setFormData({ name: '', email: '', phone: '', service: '', message: '' });
