@@ -1,55 +1,44 @@
 import dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
 // Using inline styles directly to avoid needing CSS inlining libraries (Node 18 compatible)
 
 dotenv.config();
 
-// Build transport from env with sensible defaults (Gmail app password by default)
-const SMTP_HOST = process.env.SMTP_HOST; // e.g. 'smtp.gmail.com'
-const SMTP_PORT = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined; // e.g. 465 or 587
-const SMTP_SECURE = typeof process.env.SMTP_SECURE !== 'undefined'
-  ? /^(1|true|yes)$/i.test(String(process.env.SMTP_SECURE))
-  : undefined; // default will be inferred below
+// Mailgun HTTP API configuration (HTTPS, allowed on Render)
+const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN; // e.g., "mg.example.com"
+const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY; // e.g., key-xxxx
 
-const baseAuth = {
-  user: process.env.EMAIL_USER,
-  pass: process.env.EMAIL_PASS,
-};
+function basicAuthHeader() {
+  if (!MAILGUN_API_KEY) return '';
+  const token = Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64');
+  return `Basic ${token}`;
+}
 
-// Prefer explicit SMTP settings if provided; otherwise fall back to Gmail service
-let transporter;
-const SMTP_FAMILY = process.env.SMTP_FAMILY ? Number(process.env.SMTP_FAMILY) : undefined; // 4 or 6
-if (SMTP_HOST) {
-  transporter = nodemailer.createTransport({
-    host: SMTP_HOST,
-    port: SMTP_PORT ?? 465,
-    secure: typeof SMTP_SECURE === 'boolean' ? SMTP_SECURE : (SMTP_PORT ? SMTP_PORT === 465 : true),
-    auth: baseAuth,
-    family: SMTP_FAMILY, // force IPv4 (4) if provider has IPv6 issues
-    // Pooling and timeouts to reduce ETIMEDOUT risk
-    pool: true,
-    maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 1),
-    maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 50),
-    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 15000), // 15s
-    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 10000), // 10s
-    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000), // 20s
-    logger: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
-    debug: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
+async function sendViaMailgun({ to, subject, html, text, from, replyTo }) {
+  if (!MAILGUN_DOMAIN || !MAILGUN_API_KEY) {
+    throw new Error('Mailgun is not configured (MAILGUN_DOMAIN/MAILGUN_API_KEY)');
+  }
+  const url = `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`;
+  const form = new URLSearchParams();
+  form.append('from', from);
+  form.append('to', to);
+  form.append('subject', subject);
+  if (text) form.append('text', text);
+  if (html) form.append('html', html);
+  if (replyTo) form.append('h:Reply-To', replyTo);
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Authorization': basicAuthHeader(),
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: form.toString(),
   });
-} else {
-  transporter = nodemailer.createTransport({
-    service: 'gmail',
-    auth: baseAuth,
-    family: SMTP_FAMILY,
-    pool: true,
-    maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 1),
-    maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 50),
-    connectionTimeout: Number(process.env.SMTP_CONNECTION_TIMEOUT || 15000),
-    greetingTimeout: Number(process.env.SMTP_GREETING_TIMEOUT || 10000),
-    socketTimeout: Number(process.env.SMTP_SOCKET_TIMEOUT || 20000),
-    logger: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
-    debug: /^(1|true|yes)$/i.test(String(process.env.SMTP_DEBUG || '')),
-  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error(`Mailgun send failed (${res.status}): ${body}`);
+  }
+  return await res.json().catch(() => ({}));
 }
 
 export async function sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase }) {
@@ -154,15 +143,20 @@ export async function sendContactEmail({ name, email, phone, service, message, b
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent:', info.response);
+    const info = await sendViaMailgun({
+      to: mailOptions.to,
+      from: mailOptions.from,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text,
+      replyTo: mailOptions.replyTo,
+    });
+    console.log('Email sent (Mailgun):', info?.message || 'ok');
     return info;
   } catch (error) {
     console.error('Error sending email:', {
       message: error?.message,
-      code: error?.code,
-      command: error?.command,
-      response: error?.response,
+      via: 'mailgun',
     });
     throw new Error('Failed to send email');
   }
@@ -283,15 +277,19 @@ export async function sendPasswordResetEmail({ to, userName, brandName, supportE
     text,
   };
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Password reset email sent:', info.response);
+    const info = await sendViaMailgun({
+      to: mailOptions.to,
+      from: mailOptions.from,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text,
+    });
+    console.log('Password reset email sent (Mailgun):', info?.message || 'ok');
     return info;
   } catch (error) {
     console.error('Error sending password reset email:', {
       message: error?.message,
-      code: error?.code,
-      command: error?.command,
-      response: error?.response,
+      via: 'mailgun',
     });
     throw new Error('Failed to send password reset email');
   }
@@ -448,15 +446,19 @@ export async function sendVerificationEmail({ to, verifyUrl, userName, brandName
     text,
   };
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Verification email sent:', info.response);
+    const info = await sendViaMailgun({
+      to: mailOptions.to,
+      from: mailOptions.from,
+      subject: mailOptions.subject,
+      html: mailOptions.html,
+      text: mailOptions.text,
+    });
+    console.log('Verification email sent (Mailgun):', info?.message || 'ok');
     return info;
   } catch (error) {
     console.error('Error sending verification email:', {
       message: error?.message,
-      code: error?.code,
-      command: error?.command,
-      response: error?.response,
+      via: 'mailgun',
     });
     throw new Error('Failed to send verification email');
   }
@@ -465,21 +467,13 @@ export async function sendVerificationEmail({ to, verifyUrl, userName, brandName
 // Verify transport connectivity and auth; helpful for diagnosing ETIMEDOUT
 export async function verifyEmailTransport() {
   try {
-    const result = await transporter.verify();
-    return {
-      ok: !!result,
-      host: process.env.SMTP_HOST || 'gmail-service',
-      port: process.env.SMTP_PORT || (process.env.SMTP_HOST ? undefined : 'service'),
-      secure: typeof process.env.SMTP_SECURE !== 'undefined' ? process.env.SMTP_SECURE : (process.env.SMTP_HOST ? undefined : 'service'),
-      family: process.env.SMTP_FAMILY || undefined,
-    };
+    if (!MAILGUN_API_KEY) throw new Error('MAILGUN_API_KEY not set');
+    const res = await fetch('https://api.mailgun.net/v3/domains', {
+      headers: { Authorization: basicAuthHeader() },
+    });
+    const ok = res.ok;
+    return { ok, provider: 'mailgun', domain: MAILGUN_DOMAIN, status: res.status };
   } catch (e) {
-    return {
-      ok: false,
-      host: process.env.SMTP_HOST || 'gmail-service',
-      error: e?.message,
-      code: e?.code,
-      command: e?.command,
-    };
+    return { ok: false, provider: 'mailgun', domain: MAILGUN_DOMAIN, error: e?.message };
   }
 }
