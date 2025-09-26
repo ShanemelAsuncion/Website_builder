@@ -55,7 +55,8 @@ const PORT = process.env.PORT || 5000;
 // Use a consistent JWT secret for development
 // This secret is used for both signing and verifying tokens
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-1234567890';
-const JWT_EXPIRES_IN = '1h';
+// Allow configuring expiry via env (e.g., '12h', '2h', '1d')
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '1h';
 
 console.log('Server starting with JWT configuration:', {
   JWT_SECRET: JWT_SECRET ? '*** (set)' : 'NOT SET!',
@@ -1062,10 +1063,15 @@ app.post('/api/contact', contactLimiter, async (req, res) => {
       }
     } catch {}
 
-    // Send the email with branding
-    await sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase: getAssetBase(req) });
-
-    res.status(200).json({ message: 'Your quote request has been sent successfully!' });
+    // Attempt to send the email with branding, but do not block the user if SMTP fails
+    try {
+      await sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase: getAssetBase(req) });
+      return res.status(200).json({ message: 'Your quote request has been sent successfully!' });
+    } catch (e) {
+      console.warn('Contact email failed, returning success to user to avoid blocking:', e?.message || e);
+      // Still return success so the user isn't blocked while SMTP is being configured
+      return res.status(200).json({ message: 'Your quote request was received. We will reach out shortly.' });
+    }
 
   } catch (error) {
     console.error('Contact form error:', error);

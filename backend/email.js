@@ -18,12 +18,14 @@ const baseAuth = {
 
 // Prefer explicit SMTP settings if provided; otherwise fall back to Gmail service
 let transporter;
+const SMTP_FAMILY = process.env.SMTP_FAMILY ? Number(process.env.SMTP_FAMILY) : undefined; // 4 or 6
 if (SMTP_HOST) {
   transporter = nodemailer.createTransport({
     host: SMTP_HOST,
     port: SMTP_PORT ?? 465,
     secure: typeof SMTP_SECURE === 'boolean' ? SMTP_SECURE : (SMTP_PORT ? SMTP_PORT === 465 : true),
     auth: baseAuth,
+    family: SMTP_FAMILY, // force IPv4 (4) if provider has IPv6 issues
     // Pooling and timeouts to reduce ETIMEDOUT risk
     pool: true,
     maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 1),
@@ -38,6 +40,7 @@ if (SMTP_HOST) {
   transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: baseAuth,
+    family: SMTP_FAMILY,
     pool: true,
     maxConnections: Number(process.env.SMTP_MAX_CONNECTIONS || 1),
     maxMessages: Number(process.env.SMTP_MAX_MESSAGES || 50),
