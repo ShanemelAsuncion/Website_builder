@@ -1,44 +1,23 @@
 import dotenv from 'dotenv';
-// Using inline styles directly to avoid needing CSS inlining libraries (Node 18 compatible)
+import { Resend } from 'resend';
 
 dotenv.config();
 
-// Mailgun HTTP API configuration (HTTPS, allowed on Render)
-const MAILGUN_DOMAIN = process.env.MAILGUN_DOMAIN; // e.g., "mg.example.com"
-const MAILGUN_API_KEY = process.env.MAILGUN_API_KEY; // e.g., key-xxxx
+// Resend HTTP API (HTTPS, allowed on Render)
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const resend = new Resend(RESEND_API_KEY);
 
-function basicAuthHeader() {
-  if (!MAILGUN_API_KEY) return '';
-  const token = Buffer.from(`api:${MAILGUN_API_KEY}`).toString('base64');
-  return `Basic ${token}`;
-}
-
-async function sendViaMailgun({ to, subject, html, text, from, replyTo }) {
-  if (!MAILGUN_DOMAIN || !MAILGUN_API_KEY) {
-    throw new Error('Mailgun is not configured (MAILGUN_DOMAIN/MAILGUN_API_KEY)');
-  }
-  const url = `https://api.mailgun.net/v3/${MAILGUN_DOMAIN}/messages`;
-  const form = new URLSearchParams();
-  form.append('from', from);
-  form.append('to', to);
-  form.append('subject', subject);
-  if (text) form.append('text', text);
-  if (html) form.append('html', html);
-  if (replyTo) form.append('h:Reply-To', replyTo);
-
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': basicAuthHeader(),
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: form.toString(),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Mailgun send failed (${res.status}): ${body}`);
-  }
-  return await res.json().catch(() => ({}));
+// Helper: construct a Resend-compatible 'from' string. Resend allows
+// onboarding@resend.dev for testing. You can change MAIL_FROM to a verified
+// sender later.
+function getFromAddress(brand) {
+  const displayName = brand || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  const envFrom = process.env.MAIL_FROM && /@/.test(process.env.MAIL_FROM)
+    ? process.env.MAIL_FROM
+    : 'onboarding@resend.dev';
+  // If MAIL_FROM already includes a display name, use as-is; else compose one
+  if (envFrom.includes('<') && envFrom.includes('>')) return envFrom;
+  return `${displayName} <${envFrom}>`;
 }
 
 export async function sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase }) {
@@ -53,6 +32,8 @@ export async function sendContactEmail({ name, email, phone, service, message, b
   const absoluteLogo = derivedLogo && !/^https?:\/\//i.test(derivedLogo)
     ? `${backendOrigin}${derivedLogo.startsWith('/') ? derivedLogo : '/' + derivedLogo}`
     : derivedLogo;
+
+  // Password reset email HTML per provided template, with branding variables injected
   const html = `
       <!DOCTYPE html>
       <html>
@@ -132,31 +113,23 @@ export async function sendContactEmail({ name, email, phone, service, message, b
       </html>
   `;
 
-  const fromAddress = process.env.MAIL_FROM || process.env.EMAIL_USER;
+  const fromAddress = getFromAddress(derivedBrand);
   const mailOptions = {
-    from: `${derivedBrand} <${fromAddress}>`,
+    from: fromAddress,
     to: recipient,
-    replyTo: email,
+    reply_to: email,
     subject: `New Quote Request: ${service}`,
-    text: `New Quote Request\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone || 'Not provided'}\nService: ${service}\n\nMessage:\n${message}\n\nSent on: ${sentOn}`,
     html,
   };
 
   try {
-    const info = await sendViaMailgun({
-      to: mailOptions.to,
-      from: mailOptions.from,
-      subject: mailOptions.subject,
-      html: mailOptions.html,
-      text: mailOptions.text,
-      replyTo: mailOptions.replyTo,
-    });
-    console.log('Email sent (Mailgun):', info?.message || 'ok');
+    const info = await resend.emails.send(mailOptions);
+    console.log('Email sent (Resend):', info?.id || 'ok');
     return info;
   } catch (error) {
     console.error('Error sending email:', {
       message: error?.message,
-      via: 'mailgun',
+      via: 'resend',
     });
     throw new Error('Failed to send email');
   }
@@ -268,28 +241,22 @@ export async function sendPasswordResetEmail({ to, userName, brandName, supportE
   const subject = `Reset your password - ${derivedBrand}`;
   const text = `Hello ${derivedUserName},\n\nYou requested to reset your password. Visit: ${resetUrl}\n\nIf you did not request this, you can ignore this email.\n\n— ${derivedBrand}`;
 
-  const fromAddress = process.env.MAIL_FROM || process.env.EMAIL_USER;
+  const fromAddress = getFromAddress(derivedBrand);
   const mailOptions = {
-    from: `${derivedBrand} <${fromAddress}>`,
+    from: fromAddress,
     to: to,
     subject,
     html,
     text,
   };
   try {
-    const info = await sendViaMailgun({
-      to: mailOptions.to,
-      from: mailOptions.from,
-      subject: mailOptions.subject,
-      html: mailOptions.html,
-      text: mailOptions.text,
-    });
-    console.log('Password reset email sent (Mailgun):', info?.message || 'ok');
+    const info = await resend.emails.send(mailOptions);
+    console.log('Password reset email sent (Resend):', info?.id || 'ok');
     return info;
   } catch (error) {
     console.error('Error sending password reset email:', {
       message: error?.message,
-      via: 'mailgun',
+      via: 'resend',
     });
     throw new Error('Failed to send password reset email');
   }
@@ -437,43 +404,23 @@ export async function sendVerificationEmail({ to, verifyUrl, userName, brandName
   const subject = `Verify your email - ${derivedBrand}`;
   const text = `Hello ${derivedUserName},\n\nPlease verify your email to activate your account.\n\nVerification link: ${verifyUrl}\n\nIf you did not request this, you can ignore this email.\n\n— ${derivedBrand}`;
 
-  const fromAddress = process.env.MAIL_FROM || process.env.EMAIL_USER;
+  const fromAddress = getFromAddress(derivedBrand);
   const mailOptions = {
-    from: `${derivedBrand} <${fromAddress}>`,
+    from: fromAddress,
     to,
     subject,
     html,
     text,
   };
   try {
-    const info = await sendViaMailgun({
-      to: mailOptions.to,
-      from: mailOptions.from,
-      subject: mailOptions.subject,
-      html: mailOptions.html,
-      text: mailOptions.text,
-    });
-    console.log('Verification email sent (Mailgun):', info?.message || 'ok');
+    const info = await resend.emails.send(mailOptions);
+    console.log('Verification email sent (Resend):', info?.id || 'ok');
     return info;
   } catch (error) {
     console.error('Error sending verification email:', {
       message: error?.message,
-      via: 'mailgun',
+      via: 'resend',
     });
     throw new Error('Failed to send verification email');
-  }
-}
-
-// Verify transport connectivity and auth; helpful for diagnosing ETIMEDOUT
-export async function verifyEmailTransport() {
-  try {
-    if (!MAILGUN_API_KEY) throw new Error('MAILGUN_API_KEY not set');
-    const res = await fetch('https://api.mailgun.net/v3/domains', {
-      headers: { Authorization: basicAuthHeader() },
-    });
-    const ok = res.ok;
-    return { ok, provider: 'mailgun', domain: MAILGUN_DOMAIN, status: res.status };
-  } catch (e) {
-    return { ok: false, provider: 'mailgun', domain: MAILGUN_DOMAIN, error: e?.message };
   }
 }

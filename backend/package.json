@@ -14,6 +14,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
     "bcryptjs": "^3.0.2",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
@@ -24,13 +25,13 @@
     "jsonwebtoken": "^9.0.2",
     "juice": "^11.0.1",
     "knex": "^3.1.0",
+    "mime-types": "^2.1.35",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.6",
-    "sqlite": "^5.1.1",
-    "sqlite3": "^5.1.7",
+    "resend": "^6.1.0",
     "sharp": "^0.33.5",
-    "@supabase/supabase-js": "^2.45.4",
-    "mime-types": "^2.1.35"
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
   },
   "devDependencies": {
     "nodemon": "^3.1.10"

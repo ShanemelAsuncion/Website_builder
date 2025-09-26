@@ -23,7 +23,6 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
   const [forgotEmail, setForgotEmail] = useState('');
   const [forgotStatus, setForgotStatus] = useState<{ type: 'idle' | 'success' | 'error'; message?: string }>({ type: 'idle' });
   const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
-  const [isLaptop, setIsLaptop] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
   const navigate = useNavigate();
   const location = useLocation();
   const from = location.state?.from?.pathname || '/admin/dashboard';
@@ -71,13 +70,6 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
     };
   }, []);
 
-  // Enforce laptop/desktop screens for admin
-  useEffect(() => {
-    const onResize = () => setIsLaptop(window.innerWidth >= 1024);
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
   const handleForgotSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setForgotStatus({ type: 'idle' });
@@ -116,21 +108,6 @@ export const Login = ({ season = 'summer', onSeasonToggle = () => {} }: LoginPro
 
   const accentColor = season === 'summer' ? 'text-green-600' : 'text-blue-600';
   const SeasonIcon = season === 'summer' ? Sun : Snowflake;
-
-  if (!isLaptop) {
-    return (
-      <div className={`min-h-screen bg-gradient-to-br ${backgroundGradient} flex items-center justify-center p-6 relative overflow-hidden`}>
-        <div className="flex items-center justify-center w-full">
-          <div className="bg-white text-black rounded-xl p-6 max-w-md w-[90%] text-center shadow-2xl">
-            <h2 className="text-xl font-semibold mb-2">Admin available on larger screens</h2>
-            <p className="text-sm text-gray-700">
-              The admin login and dashboard are optimized for laptop/desktop screens. Please use a larger device to continue.
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className={`min-h-screen bg-gradient-to-br ${backgroundGradient} flex items-center justify-center p-6 relative overflow-hidden`}>
