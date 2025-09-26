@@ -28,8 +28,10 @@ export function Contact({ season }: ContactProps) {
   // Brand name for subtext
   const [brandName, setBrandName] = useState<string>("Jay's Blade and Snow Services");
 
-  // Services for dropdown (loaded from DB by season)
+  // Services for dropdown (combined from both seasons)
   const [services, setServices] = useState<Array<{ value: string; label: string }>>([]);
+  // Track the selected option's value for the Select control
+  const [selectedServiceValue, setSelectedServiceValue] = useState<string>('');
 
   const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string; facebook?: string; facebookName?: string; facebookUrl?: string }>({
     phone: '(555) 123-4567',
@@ -76,42 +78,47 @@ export function Contact({ season }: ContactProps) {
     })();
   }, []);
 
-  // Load services for current season from DB
+  // Load services for BOTH seasons from DB and combine
   useEffect(() => {
     (async () => {
       try {
         const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
-        const key = `services.${season}`;
-        const svcItem = items.find(i => i.key === key);
-        if (svcItem?.value) {
-          const parsed = JSON.parse(svcItem.value) as Array<{ id?: string; title?: string } | string>;
-          const mapped: Array<{ value: string; label: string }> = [];
-          for (const it of parsed as any[]) {
+        const combined: Array<{ value: string; label: string }> = [];
+        function mapArray(arr: Array<any>) {
+          for (const it of arr) {
             if (typeof it === 'string') {
-              mapped.push({ value: it, label: it });
-            } else if (it && (it as any).title) {
-              const v = (it as any).id || (it as any).title?.toString().toLowerCase().replace(/\s+/g, '-');
-              mapped.push({ value: v, label: (it as any).title });
+              combined.push({ value: it, label: it });
+            } else if (it && it.title) {
+              const v = it.id || String(it.title).toLowerCase().replace(/\s+/g, '-');
+              combined.push({ value: v, label: it.title });
             }
           }
-          setServices(mapped);
+        }
+        const summer = items.find(i => i.key === 'services.summer');
+        const winter = items.find(i => i.key === 'services.winter');
+        if (summer?.value) {
+          try { mapArray(JSON.parse(summer.value)); } catch {}
+        }
+        if (winter?.value) {
+          try { mapArray(JSON.parse(winter.value)); } catch {}
+        }
+        // Deduplicate by value
+        const seen = new Set<string>();
+        const deduped = combined.filter(s => (seen.has(s.value) ? false : (seen.add(s.value), true)));
+        if (deduped.length) {
+          setServices(deduped);
           return;
         }
       } catch {}
       // Fallback static options if DB lookup fails
-      if (season === 'summer') {
-        setServices([
-          { value: 'lawn-care', label: 'Lawn Care & Maintenance' },
-          { value: 'landscaping', label: 'Landscape Design' },
-        ]);
-      } else {
-        setServices([
-          { value: 'snow-removal', label: 'Snow Removal & Plowing' },
-          { value: 'ice-management', label: 'Ice Management' },
-        ]);
-      }
+      setServices([
+        { value: 'lawn-care', label: 'Lawn Care & Maintenance' },
+        { value: 'landscaping', label: 'Landscape Design' },
+        { value: 'snow-removal', label: 'Snow Removal & Plowing' },
+        { value: 'ice-management', label: 'Ice Management' },
+      ]);
     })();
-  }, [season]);
+  }, []);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { id, value } = e.target;
@@ -119,7 +126,15 @@ export function Contact({ season }: ContactProps) {
   };
 
   const handleServiceChange = (value: string) => {
-    setFormData(prev => ({ ...prev, service: value }));
+    // Map the selected value to its human-readable label
+    let selectedLabel = services.find(s => s.value === value)?.label;
+    if (!selectedLabel) {
+      if (value === 'multiple') selectedLabel = 'Multiple Services';
+      else if (value === 'consultation') selectedLabel = 'Free Consultation';
+      else selectedLabel = value;
+    }
+    setSelectedServiceValue(value);
+    setFormData(prev => ({ ...prev, service: selectedLabel! }));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -132,6 +147,7 @@ export function Contact({ season }: ContactProps) {
       setStatus('success');
       setResponseMsg(response.data.message);
       setFormData({ name: '', email: '', phone: '', service: '', message: '' });
+      setSelectedServiceValue('');
     } catch (error: any) {
       setStatus('error');
       setResponseMsg(error.response?.data?.error || 'An unexpected error occurred.');
@@ -295,7 +311,7 @@ export function Contact({ season }: ContactProps) {
 
                 <div className="space-y-2">
                   <Label htmlFor="service">Service Needed</Label>
-                  <Select onValueChange={handleServiceChange} value={formData.service}>
+                  <Select onValueChange={handleServiceChange} value={selectedServiceValue}>
                     <SelectTrigger className="h-12">
                       <SelectValue placeholder="What service are you interested in?" />
                     </SelectTrigger>

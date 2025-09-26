@@ -36,6 +36,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
   const [onSave, setOnSave] = useState<(() => void) | undefined>(undefined);
   const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
+  const [isLaptop, setIsLaptop] = useState<boolean>(typeof window !== 'undefined' ? window.innerWidth >= 1024 : true);
 
   const toggleSeason = () => {
     setSeason(prev => prev === 'summer' ? 'winter' : 'summer');
@@ -77,6 +78,13 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     };
   }, []);
 
+  // Enforce laptop/desktop only
+  useEffect(() => {
+    const onResize = () => setIsLaptop(window.innerWidth >= 1024);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('token');
     navigate('/admin/login');
@@ -106,6 +114,32 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
     onSave,
     setHeaderControls
   };
+
+  if (!isLaptop) {
+    return (
+      <AdminContext.Provider value={{
+        season,
+        onSeasonToggle: toggleSeason,
+        onLogout: () => navigate('/admin/login'),
+        onPreview: () => window.open('/', '_blank'),
+        hasUnsavedChanges,
+        onSave,
+        setHeaderControls: (controls: { hasUnsavedChanges?: boolean; onSave?: () => void }) => {
+          if (typeof controls.hasUnsavedChanges !== 'undefined') setHasUnsavedChanges(!!controls.hasUnsavedChanges);
+          if (typeof controls.onSave !== 'undefined') setOnSave(() => controls.onSave);
+        }
+      }}>
+        <div className="min-h-screen bg-background flex items-center justify-center p-6">
+          <div className="bg-white text-black rounded-xl p-6 max-w-md w-[90%] text-center shadow-2xl">
+            <h2 className="text-xl font-semibold mb-2">Admin available on larger screens</h2>
+            <p className="text-sm text-gray-700">
+              The admin dashboard is optimized for laptop/desktop screens. Please use a larger device to continue.
+            </p>
+          </div>
+        </div>
+      </AdminContext.Provider>
+    );
+  }
 
   return (
     <AdminContext.Provider value={contextValue}>
