@@ -461,3 +461,25 @@ export async function sendVerificationEmail({ to, verifyUrl, userName, brandName
     throw new Error('Failed to send verification email');
   }
 }
+
+// Verify transport connectivity and auth; helpful for diagnosing ETIMEDOUT
+export async function verifyEmailTransport() {
+  try {
+    const result = await transporter.verify();
+    return {
+      ok: !!result,
+      host: process.env.SMTP_HOST || 'gmail-service',
+      port: process.env.SMTP_PORT || (process.env.SMTP_HOST ? undefined : 'service'),
+      secure: typeof process.env.SMTP_SECURE !== 'undefined' ? process.env.SMTP_SECURE : (process.env.SMTP_HOST ? undefined : 'service'),
+      family: process.env.SMTP_FAMILY || undefined,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      host: process.env.SMTP_HOST || 'gmail-service',
+      error: e?.message,
+      code: e?.code,
+      command: e?.command,
+    };
+  }
+}
