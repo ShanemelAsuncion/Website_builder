@@ -1,4 +1,4 @@
-# Blade & Snow Services Website
+# Blade & Snow Services Website Builder
 
 Modern marketing site + admin dashboard. Built for real-world constraints: zero-redeploy content updates, resilient API, clean local dev (no credits), and cloud-ready.
 
@@ -110,8 +110,8 @@ npm run dev:netlify  # http://localhost:8888
 ## 🧭 Admin Dashboard
 - Route: `/admin`
 - Tabs: Hero, Services, Portfolio, Reviews, Contact, Settings
+- Changes persist via `contentApi.createOrUpdate` and sync to the site immediately (in the same browser) via localStorage cache events.
 - **Settings Editor**: Edit `SITE_NAME` and `USER_EMAIL` (stored in Supabase `settings`). Frontend picks up via `/api/config` on next load.
-- **Image Previews**: Constrained to 600×600 in dashboard for visual consistency.
 
 ## 🧪 Quick Tests
 ```
@@ -125,61 +125,6 @@ curl -sS https://<render>/api/config
 curl -sS -X POST https://<render>/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"email":"admin@example.com","password":"admin123"}'
-```
-
-## Why this project stands out (for recruiters)
-- **Production‑minded design**: runtime config, DB/storage separation, adapters, safe defaults.
-- **Cloud‑ready**: Netlify + Render + Supabase with zero‑credit local dev.
-- **Operational quality**: retries, rate limits, and structured routes to minimize downtime.
-- **Security posture**: no secret leaks, bcrypt hashing, and master‑admin protections.
-
-
-## 📂 Project Structure
-```
-Website_builder/
-├── frontend/                # React app (Vite)
-│   ├── src/components/      # UI components
-│   ├── src/components/admin # Admin dashboard
-│   ├── src/services/api.ts  # API client
-│   └── index.html
-└── backend/                 # Express API
-    ├── server.js            # Express entry
-    ├── seedData.js          # Default content
-    ├── email.js             # Nodemailer email sender
-    └── uploads/             # Uploaded images
-```
-
-## 🔧 Environment Variables (backend/.env)
-Required for backend:
-```
-PORT=5000
-JWT_SECRET=your_jwt_secret
-
-# Email (Gmail via Nodemailer)
-EMAIL_USER=your_gmail@gmail.com
-EMAIL_PASS=your_gmail_app_password
-# Optional: override recipient mailbox
-CONTACT_RECIPIENT=your_inbox@example.com
-```
-Important: Use a Gmail App Password (Google Account → Security → App passwords). Regular Gmail passwords won’t work.
-
-## 🚀 Local Development
-Open two terminals.
-
-- Frontend
-```
-cd frontend
-npm install
-npm run dev
-# Local: http://localhost:5173 (or shown port)
-```
-
-- Backend
-```
-cd backend
-npm install
-node server.js
-# API: http://localhost:5000
 ```
 
 ## ✉️ Test Quote Email
@@ -197,136 +142,7 @@ curl -X POST http://localhost:5000/api/contact \
 ```
 If the email fails, verify EMAIL_USER and EMAIL_PASS are correct and that the backend restarted after editing `.env`.
 
-## 🗂️ Content Model (DB Keys)
-- `hero.summer`, `hero.winter`: title, subtitle, ctaText, metrics
-- `services.summer`, `services.winter`: list of services with title, description, image, price, features, color
-- `portfolio.summer`, `portfolio.winter`: project cards
-- `testimonials`: array
-- `contact`: phone, email, address, hours, weekendNote, facebook
-
-## 🧭 Admin Dashboard
-- Route: `/admin`
-- Tabs: Hero, Services, Portfolio, Reviews, Contact, Settings
-- Changes persist via `contentApi.createOrUpdate` and sync to the site immediately (in the same browser) via localStorage cache events.
-- Added hover/active emphasis on tabs to improve clarity.
-
-## ☁️ Deployment Recommendations
-- Frontend (static):
-  - Vercel or Netlify: push to GitHub, import repo, set framework to Vite, and deploy. Output dir: `frontend/dist` (use `npm run build` in `frontend/`).
-  - Alternative: GitHub Pages (needs a separate build and publish step).
-- Backend (server):
-  - Render (Free Web Service): connect GitHub repo, set root to `backend/`, Start command: `node server.js`, add `.env` in Render dashboard.
-  - Ensure CORS in `backend/server.js` allows your deployed frontend origin.
-- Database: SQLite file stored on server disk. For multi-instance or cloud DB, migrate to Postgres (e.g., Supabase) with similar schema.
-
-## 🔒 Security Notes
-- Use `JWT_SECRET` and secure it in environment variables.
-- Never commit real passwords or app secrets.
-- Helmet is configured for dev with relaxed CSP; tighten for production.
-
-## 🧭 Useful Paths
-- Frontend: `frontend/src/components/`
-- Admin: `frontend/src/components/admin/`
-- Backend: `backend/server.js`, `backend/seedData.js`, `backend/email.js`
-
 ## 📜 License
 MIT License © 2025
   - Or free domain → from Freenom (.tk, .ml, .ga, .cf, .gq)
 
-## 📂 Project Structure
-```
-project-root/
-│
-├── frontend/                # React app
-│   ├── components/          # Header, Hero, Features, etc.
-│   ├── pages/               # Landing, Admin
-│   ├── editor/              # Edit mode logic
-│   ├── App.jsx              # Main app component
-│   └── main.jsx             # React entry point
-│
-└── backend/                 # Express API
-    ├── routes/              # auth.js, content.js
-    ├── models/              # sqlite schema
-    └── server.js            # Express entry
-```
-
-## 🚀 Getting Started
-1. Clone the Repository
-```
-git clone https://github.com/your-username/company-name.git
-cd company-name
-```
-
-3. Install Dependencies
-### Frontend
-```
-cd frontend
-npm install
-```
-
-### Backend
-```
-cd ../backend
-npm install
-```
-
-3. Run Development Servers
-### Frontend (Vite dev server)
-```
-npm run dev
-```
-
-### Backend (Express API)
-```
-npm run start
-```
-
-Frontend → http://localhost:5173
-
-Backend → http://localhost:5000
-
-## 🔑 Admin Login Setup
-
-Create a .env file in /backend with credentials:
-```
-ADMIN_EMAIL=admin@company.com
-ADMIN_PASSWORD=supersecret
-JWT_SECRET=your_jwt_secret
-```
-
-Start backend, then login at /admin.
-If successful → redirected to editor with Edit Mode toggle.
-
-## ✏️ Editing Workflow
-- Admin logs in at /admin.
-- Click Edit Mode toggle in toolbar.
-- Editable areas (text/images) are highlighted.
-- Update content → click Save.
-- Changes stored in database → reloaded on next visit.
-
-## ☁️ Deployment (Free)
-Frontend → GitHub Pages
-npm run build
-npm run deploy
-
-- URL: https://yourusername.github.io/company-builder
-- Backend → Render
-- Push code to GitHub
-- Create new Web Service in Render
-- Set npm start as start command
-- Add .env variables in Render dashboard
-- Deploy
-
-## ✅ Roadmap / Kanban Issues
-
-- Landing Page UI (Hero, Features, Pricing, Contact)
-- /admin sign-in route
-- Edit Mode toggle
-- Inline text editing
-- Image upload & replacement
-- Save + load content from database
-- Free hosting & deployment
-
-## 📜 License
-
-MIT License © 2025
