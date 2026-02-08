@@ -3,7 +3,7 @@ import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Separator } from "./ui/separator";
 import { ArrowRight } from "lucide-react";
-import { contentApi } from "../services/api";
+import { contentApi, resolveAssetUrl } from "../services/api";
 
 interface FooterProps {
   season: 'summer' | 'winter';
@@ -16,6 +16,7 @@ export function Footer({ season }: FooterProps) {
     address: 'Greater Metro Area',
   });
   const [services, setServices] = useState<Array<{ title: string }>>([]);
+  const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
 
   useEffect(() => {
     (async () => {
@@ -32,6 +33,10 @@ export function Footer({ season }: FooterProps) {
             weekendNote: parsed.weekendNote || prev.weekendNote,
           }));
         }
+        const bItem = items.find(i => i.key === 'branding');
+        if (bItem?.value) {
+          try { setBranding(JSON.parse(bItem.value)); } catch {}
+        }
         const sSummer = items.find(i => i.key === 'services.summer');
         const sWinter = items.find(i => i.key === 'services.winter');
         const summerArr = sSummer?.value ? JSON.parse(sSummer.value) : [];
@@ -42,6 +47,30 @@ export function Footer({ season }: FooterProps) {
         // keep fallbacks
       }
     })();
+    // Initialize from cache
+    try {
+      const cachedBranding = localStorage.getItem('cache:branding');
+      if (cachedBranding) setBranding(JSON.parse(cachedBranding));
+    } catch {}
+    const refreshFromCache = () => {
+      try {
+        const cachedBranding = localStorage.getItem('cache:branding');
+        if (cachedBranding) setBranding(JSON.parse(cachedBranding));
+      } catch {}
+    };
+    const onUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.persisted) refreshFromCache();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cache:branding') refreshFromCache();
+    };
+    window.addEventListener('content-updated', onUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('content-updated', onUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
   }, []);
 
 
@@ -55,8 +84,11 @@ export function Footer({ season }: FooterProps) {
       <div className="container mx-auto px-6 py-16">
         <div className="grid lg:grid-cols-4 gap-12">
           <div className="lg:col-span-2">
-            <div className="flex items-center space-x-2 mb-6">
-              <h3 className="text-3xl tracking-tight">Jay's Blade & Snow Services Inc</h3>
+            <div className="flex items-center gap-3 mb-6">
+              {branding.logoUrl && (
+                <img src={resolveAssetUrl(branding.logoUrl)} alt={branding.name || 'Company Logo'} className="h-8 w-8 md:h-10 md:w-10 object-contain" />
+              )}
+              <h3 className="text-2xl md:text-3xl tracking-tight">{branding.name || "Jay's Blade & Snow Services Inc"}</h3>
               <div className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse"></div>
             </div>
             <p className="text-primary-foreground/80 mb-6 text-lg leading-relaxed max-w-md">
@@ -117,7 +149,7 @@ export function Footer({ season }: FooterProps) {
         
         <div className="flex flex-col lg:flex-row justify-between items-center">
           <p className="text-primary-foreground/60 text-sm">
-            © 2025 Jay's Blade and Snow Services Inc. All rights reserved. • Professional property maintenance services.
+            © 2025 {branding.name || "Jay's Blade and Snow Services Inc"}. All rights reserved. • Professional property maintenance services.
           </p>
         
         </div>

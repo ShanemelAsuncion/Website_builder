@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useOutletContext } from 'react-router-dom';
-import { contentApi, authApi } from '../../services/api';
+import { contentApi, authApi, adminApi, resolveAssetUrl } from '../../services/api';
+import { settingsService } from '../../services/settings';
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/card';
+import { Badge } from '../ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Switch } from '../ui/switch';
@@ -34,7 +36,7 @@ interface DashboardContextType {
 }
 
 type PortfolioItem = { id: string; title: string; description: string; imageUrl: string; location: string; duration: string; category?: string; featured?: boolean };
-type ServiceItem = { id: string; title: string; description: string; price: string; features?: string[] };
+type ServiceItem = { id: string; title: string; description: string; price: string; image?: string; features?: string[] };
 type TestimonialItem = { id: string; name: string; role: string; rating: number; comment: string };
 
 // The Dashboard Component
@@ -48,6 +50,11 @@ export const Dashboard = () => {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [activeTab, setActiveTab] = useState("hero");
   const navigate = useNavigate();
+  const [profile, setProfile] = useState<{ id: number; email: string; isMaster: number } | null>(null);
+  const [emailChange, setEmailChange] = useState('');
+  const [users, setUsers] = useState<Array<{ id: number; email: string; isMaster: number; createdAt: string }>>([]);
+  const [newUser, setNewUser] = useState<{ email: string; password: string; isMaster: boolean }>({ email: '', password: '', isMaster: false });
+  const [runtimeSettings, setRuntimeSettings] = useState<{ siteName: string; userEmail: string }>({ siteName: '', userEmail: '' });
   
   const [uiContent, setUiContent] = useState({
     hero: {
@@ -63,7 +70,8 @@ export const Dashboard = () => {
       winter: [] as PortfolioItem[]
     },
     testimonials: [] as TestimonialItem[],
-    contact: { phone: "", email: "", address: "", hours: "", weekendNote: "", facebook: "", facebookName: "", facebookUrl: "" }
+    contact: { phone: "", email: "", address: "", hours: "", weekendNote: "", facebook: "", facebookName: "", facebookUrl: "" },
+    branding: { name: "", logoUrl: "" }
   });
 
   // Fetch initial content from the backend
@@ -90,6 +98,7 @@ export const Dashboard = () => {
       newUiContent.portfolio.winter = contentMap['portfolio.winter'] || newUiContent.portfolio.winter;
       newUiContent.testimonials = contentMap['testimonials'] || newUiContent.testimonials;
       newUiContent.contact = contentMap['contact'] || newUiContent.contact;
+      newUiContent.branding = contentMap['branding'] || newUiContent.branding;
 
       setUiContent(newUiContent);
     } catch (err: any) {
@@ -105,15 +114,59 @@ export const Dashboard = () => {
 
   useEffect(() => {
     fetchContent();
+    (async () => {
+      try {
+        const res = await authApi.getFullProfile();
+        setProfile(res.user);
+        if (res.user.isMaster) {
+          try {
+            const list = await adminApi.listUsers();
+            setUsers(list);
+          } catch {}
+          // Load runtime settings for master users
+          try {
+            const items = await settingsService.getAll();
+            const map = new Map(items.map(i => [i.key, i.value]));
+            const siteNameRaw = map.get('SITE_NAME');
+            const userEmailRaw = map.get('USER_EMAIL');
+            const siteName = (() => { try { return JSON.parse(siteNameRaw || ''); } catch { return siteNameRaw || ''; } })();
+            const userEmail = (() => { try { return JSON.parse(userEmailRaw || ''); } catch { return userEmailRaw || ''; } })();
+            setRuntimeSettings({ siteName: siteName || '', userEmail: userEmail || '' });
+          } catch {}
+        }
+      } catch {}
+    })();
   }, [navigate]);
 
   const handleSave = async () => {
     setIsSaving(true);
     setError('');
     try {
+      // Validation: branding name required
+      if (!uiContent.branding?.name || !uiContent.branding.name.trim()) {
+        alert('Branding name is required. Please provide your company name.');
+        setIsSaving(false);
+        return;
+      }
       // First, get the existing content to map keys to IDs
       const existingContent = await contentApi.getAll() as Array<{ id: string; key: string; value: string }>;
       const contentMap = new Map(existingContent.map(i => [i.key, i.id]));
+
+      // Normalize branding.logoUrl to relative /uploads path if a full URL was provided
+      const brandingNormalized = { ...uiContent.branding } as any;
+      try {
+        const raw = brandingNormalized?.logoUrl || '';
+        if (raw) {
+          try {
+            const u = new URL(raw, window.location.origin);
+            if (u.pathname && u.pathname.startsWith('/uploads/')) {
+              brandingNormalized.logoUrl = u.pathname;
+            }
+          } catch {
+            // not a URL; leave as-is
+          }
+        }
+      } catch {}
 
       const contentToSave = [
         { key: 'hero.summer', value: JSON.stringify(uiContent.hero.summer) },
@@ -124,12 +177,27 @@ export const Dashboard = () => {
         { key: 'portfolio.winter', value: JSON.stringify(uiContent.portfolio.winter) },
         { key: 'testimonials', value: JSON.stringify(uiContent.testimonials) },
         { key: 'contact', value: JSON.stringify(uiContent.contact) },
+        { key: 'branding', value: JSON.stringify(brandingNormalized) },
       ];
 
       for (const item of contentToSave) {
         const id = contentMap.get(item.key) || item.key; // Fallback to key if ID not found
         await contentApi.createOrUpdate(id, { ...item, type: 'json' });
       }
+
+      // Cache updated content for live updates across the app
+      try {
+        localStorage.setItem('cache:hero.summer', JSON.stringify(uiContent.hero.summer));
+        localStorage.setItem('cache:hero.winter', JSON.stringify(uiContent.hero.winter));
+        localStorage.setItem('cache:services.summer', JSON.stringify(uiContent.services.summer));
+        localStorage.setItem('cache:services.winter', JSON.stringify(uiContent.services.winter));
+        localStorage.setItem('cache:portfolio.summer', JSON.stringify(uiContent.portfolio.summer));
+        localStorage.setItem('cache:portfolio.winter', JSON.stringify(uiContent.portfolio.winter));
+        localStorage.setItem('cache:testimonials', JSON.stringify(uiContent.testimonials));
+        localStorage.setItem('cache:contact', JSON.stringify(uiContent.contact));
+        localStorage.setItem('cache:branding', JSON.stringify(brandingNormalized || {}));
+        window.dispatchEvent(new CustomEvent('content-updated', { detail: { persisted: true } }));
+      } catch {}
 
       setHasUnsavedChanges(false);
       alert('Changes saved successfully!');
@@ -170,6 +238,15 @@ export const Dashboard = () => {
     handleUiChange('portfolio', updatedPortfolio);
   };
 
+  // Ensure only one featured portfolio project at a time across BOTH seasons (auto-switch)
+  const toggleFeatured = (id: string, checked: boolean) => {
+    const otherSeason: 'summer' | 'winter' = season === 'summer' ? 'winter' : 'summer';
+    const updatedCurrent = uiContent.portfolio[season].map(p => ({ ...p, featured: p.id === id ? checked : false }));
+    const updatedOther = uiContent.portfolio[otherSeason].map(p => ({ ...p, featured: false }));
+    const nextPortfolio = { ...uiContent.portfolio, [season]: updatedCurrent, [otherSeason]: updatedOther };
+    handleUiChange('portfolio', nextPortfolio);
+  };
+
   const [uploadingId, setUploadingId] = useState<string | null>(null);
   const handlePortfolioImageUpload = async (id: string, file: File | null) => {
     if (!file) return;
@@ -188,7 +265,7 @@ export const Dashboard = () => {
 
   // CRUD Handlers for Services
   const addService = () => {
-    const newItem = { id: `s-${Date.now()}`, title: 'New Service', description: 'Service description', price: '$0' };
+    const newItem = { id: `s-${Date.now()}`, title: 'New Service', description: 'Service description', price: '$0', image: '' };
     const updatedServices = { ...uiContent.services, [season]: [...uiContent.services[season], newItem] };
     handleUiChange('services', updatedServices);
   };
@@ -203,6 +280,21 @@ export const Dashboard = () => {
     handleUiChange('services', updatedServices);
   };
 
+  const [uploadingServiceId, setUploadingServiceId] = useState<string | null>(null);
+  const handleServiceImageUpload = async (id: string, file: File | null) => {
+    if (!file) return;
+    try {
+      setUploadingServiceId(id);
+      const { url } = await authApi.upload(file);
+      updateService(id, 'image', url as any);
+      setHasUnsavedChanges(true);
+    } catch (e: any) {
+      alert(e?.response?.data?.error || 'Failed to upload image.');
+    } finally {
+      setUploadingServiceId(null);
+    }
+  };
+
   // CRUD Handlers for Testimonials
   const addTestimonial = () => {
     const newItem = { id: `t-${Date.now()}`, name: 'New Customer', role: 'Customer', rating: 5, comment: '' };
@@ -213,6 +305,7 @@ export const Dashboard = () => {
     handleUiChange('testimonials', updatedItems);
   };
   const deleteTestimonial = (id: string) => {
+    if (!window.confirm('Delete this testimonial? This action cannot be undone.')) return;
     const updatedItems = uiContent.testimonials.filter(t => t.id !== id);
     handleUiChange('testimonials', updatedItems);
   };
@@ -256,7 +349,7 @@ export const Dashboard = () => {
   return (
     <div className="container mx-auto px-6 py-8 p-8" data-season={season}>
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-8">
-        <TabsList className="w-full overflow-x-auto no-scrollbar">
+        <TabsList className="w-full overflow-x-auto no-scrollbar text-sm xl:text-base">
           <TabsTrigger value="hero"><FileText className="w-4 h-4 mr-2" />Hero</TabsTrigger>
           <TabsTrigger value="services"><Briefcase className="w-4 h-4 mr-2" />Services</TabsTrigger>
           <TabsTrigger value="portfolio"><ImageIcon className="w-4 h-4 mr-2" />Portfolio</TabsTrigger>
@@ -281,7 +374,7 @@ export const Dashboard = () => {
                 <Textarea value={uiContent.hero[season].subtitle} onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], subtitle: e.target.value } })} />
               </div>
               <div>
-                <Label>CTA Text</Label>
+                <Label>Button Text</Label>
                 <Input value={uiContent.hero[season].ctaText} onChange={e => handleUiChange('hero', { ...uiContent.hero, [season]: { ...uiContent.hero[season], ctaText: e.target.value } })} />
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -310,11 +403,10 @@ export const Dashboard = () => {
           <Card>
             <CardHeader>
               <CardTitle>Services</CardTitle>
-              <Button size="sm" onClick={addService}><Plus className="w-4 h-4 mr-2" />Add Service</Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {uiContent.services[season].map(service => (
-                <div key={service.id} className="border p-4 rounded-lg space-y-2">
+                <div key={service.id} className="border p-8 rounded-lg space-y-2">
                   <div className="flex justify-between items-center">
                     <h4 className="font-medium">{service.title}</h4>
                     <Button variant="ghost" size="sm" onClick={() => deleteService(service.id)}><Trash2 className="w-4 h-4" /></Button>
@@ -325,6 +417,40 @@ export const Dashboard = () => {
                   <Input value={service.description} onChange={e => updateService(service.id, 'description', e.target.value)} />
                   <Label>Price</Label>
                   <Input value={service.price} onChange={e => updateService(service.id, 'price', e.target.value)} />
+                  <Label>Image</Label>
+                  <div
+                    className="flex flex-col gap-3 border rounded-md p-3 bg-muted/30"
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) handleServiceImageUpload(service.id, file);
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Input placeholder="Image URL" value={service.image || ''} onChange={e => updateService(service.id, 'image', e.target.value)} />
+                      <div>
+                        <input
+                          id={`svc-file-${service.id}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => handleServiceImageUpload(service.id, e.target.files?.[0] || null)}
+                        />
+                        <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById(`svc-file-${service.id}`)?.click()} disabled={uploadingServiceId === service.id}>
+                          {uploadingServiceId === service.id ? 'Uploading...' : 'Upload Image'}
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="text-xs text-muted-foreground">Drag & drop an image here to upload</div>
+                    {service.image && (
+                      <img
+                        src={service.image}
+                        alt={service.title}
+                        className="max-h-[600px] max-w-[600px] w-auto h-auto object-contain rounded border bg-white"
+                      />
+                    )}
+                  </div>
                   {/* Features (optional) */}
                   <div className="pt-2 space-y-2">
                     <div className="flex items-center justify-between">
@@ -374,6 +500,10 @@ export const Dashboard = () => {
                   </div>
                 </div>
               ))}
+
+              <div className="pt-4">
+                <Button size="sm" onClick={addService}><Plus className="w-4 h-4 mr-2" />Add Service</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -383,11 +513,10 @@ export const Dashboard = () => {
           <Card>
             <CardHeader>
               <CardTitle>Portfolio</CardTitle>
-              <Button size="sm" onClick={addPortfolioItem}><Plus className="w-4 h-4 mr-2" />Add Project</Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {uiContent.portfolio[season].map(p => (
-                <div key={p.id} className="border p-4 rounded-lg space-y-2">
+                <div key={p.id} className="border p-4 rounded-lg space-y-2 p-8">
                   <div className="flex justify-between items-center">
                     <h4 className="font-medium">{p.title || 'Untitled Project'}</h4>
                     <Button variant="ghost" size="sm" onClick={() => deletePortfolioItem(p.id)}><Trash2 className="w-4 h-4" /></Button>
@@ -403,27 +532,48 @@ export const Dashboard = () => {
                   <Label>Duration</Label>
                   <Input value={p.duration} onChange={e => updatePortfolioItem(p.id, 'duration', e.target.value)} />
                   <Label>Image</Label>
-                  <div className="flex items-center gap-3">
-                    <Input placeholder="Image URL" value={p.imageUrl} onChange={e => updatePortfolioItem(p.id, 'imageUrl', e.target.value)} />
-                    <div>
-                      <input
-                        id={`file-${p.id}`}
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={e => handlePortfolioImageUpload(p.id, e.target.files?.[0] || null)}
-                      />
-                      <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById(`file-${p.id}`)?.click()} disabled={uploadingId === p.id}>
-                        {uploadingId === p.id ? 'Uploading...' : 'Upload Image'}
-                      </Button>
+                  <div
+                    className="flex flex-col gap-3 border rounded-md p-3 bg-muted/30"
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      const file = e.dataTransfer.files?.[0];
+                      if (file) handlePortfolioImageUpload(p.id, file);
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Input placeholder="Image URL" value={p.imageUrl} onChange={e => updatePortfolioItem(p.id, 'imageUrl', e.target.value)} />
+                      <div>
+                        <input
+                          id={`file-${p.id}`}
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={e => handlePortfolioImageUpload(p.id, e.target.files?.[0] || null)}
+                        />
+                        <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById(`file-${p.id}`)?.click()} disabled={uploadingId === p.id}>
+                          {uploadingId === p.id ? 'Uploading...' : 'Upload Image'}
+                        </Button>
+                      </div>
                     </div>
+                    <div className="text-xs text-muted-foreground">Drag & drop an image here to upload</div>
+                    {p.imageUrl && (
+                      <img
+                        src={p.imageUrl}
+                        alt={p.title}
+                        className="max-h-[600px] max-w-[600px] w-auto h-auto object-contain rounded border bg-white"
+                      />
+                    )}
                   </div>
                   <div className="flex items-center gap-2 pt-2">
-                    <Switch checked={!!p.featured} onCheckedChange={(checked: boolean) => updatePortfolioItem(p.id, 'featured', checked)} />
+                    <Switch checked={!!p.featured} onCheckedChange={(checked: boolean) => toggleFeatured(p.id, checked)} />
                     <Label>Featured</Label>
                   </div>
                 </div>
               ))}
+              <div className="pt-4">
+                <Button size="sm" onClick={addPortfolioItem}><Plus className="w-4 h-4 mr-2" />Add Project</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -433,11 +583,10 @@ export const Dashboard = () => {
           <Card>
             <CardHeader>
               <CardTitle>Testimonials</CardTitle>
-              <Button size="sm" onClick={addTestimonial}><Plus className="w-4 h-4 mr-2" />Add Testimonial</Button>
             </CardHeader>
             <CardContent className="space-y-4">
               {uiContent.testimonials.map(t => (
-                <div key={t.id} className="border p-4 rounded-lg space-y-2">
+                <div key={t.id} className="border p-8 rounded-lg space-y-2">
                   <div className="flex justify-between items-center">
                     <h4 className="font-medium">{t.name}</h4>
                     <Button variant="ghost" size="sm" onClick={() => deleteTestimonial(t.id)}><Trash2 className="w-4 h-4" /></Button>
@@ -452,6 +601,9 @@ export const Dashboard = () => {
                   <Textarea value={t.comment} onChange={e => updateTestimonial(t.id, 'comment', e.target.value)} />
                 </div>
               ))}
+              <div className="pt-4">
+                <Button size="sm" onClick={addTestimonial}><Plus className="w-4 h-4 mr-2" />Add Testimonial</Button>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -513,6 +665,134 @@ export const Dashboard = () => {
                 </div>
               </CardContent>
             </Card>
+            <Card>
+              <CardHeader><CardTitle>Branding</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div>
+                  <Label>Company Name</Label>
+                  <Input value={(uiContent as any).branding?.name || ''} onChange={e => handleUiChange('branding', { ...uiContent.branding, name: e.target.value })} />
+                </div>
+                <div>
+                  <Label>Logo</Label>
+                  <div className="flex items-center gap-3">
+                    <Input placeholder="Logo URL" value={(uiContent as any).branding?.logoUrl || ''} onChange={e => handleUiChange('branding', { ...uiContent.branding, logoUrl: e.target.value })} />
+                    <div>
+                      <input
+                        id={`branding-logo-file`}
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          try {
+                            const { url, path } = await authApi.upload(file);
+                            // Store relative path for portability; preview can still render due to backend URL usage elsewhere
+                            handleUiChange('branding', { ...uiContent.branding, logoUrl: path || url });
+                            setHasUnsavedChanges(true);
+                          } catch (err: any) {
+                            alert(err?.response?.data?.error || 'Failed to upload logo.');
+                          }
+                        }}
+                      />
+                      <Button type="button" variant="outline" size="sm" onClick={() => document.getElementById('branding-logo-file')?.click()}>
+                        Upload Logo
+                      </Button>
+                    </div>
+                  </div>
+                  {(uiContent as any).branding?.logoUrl && (
+                    <div className="pt-3">
+                      <img src={resolveAssetUrl((uiContent as any).branding.logoUrl)} alt="Logo preview" className="h-12 w-auto rounded border bg-white" />
+                    </div>
+                  )}
+                </div>
+                <div>
+                  <Label>Change Email (verification required)</Label>
+                  <div className="flex gap-2">
+                    <Input type="email" placeholder="new-email@example.com" value={emailChange} onChange={(e) => setEmailChange(e.target.value)} />
+                    <Button
+                      type="button"
+                      onClick={async () => {
+                        if (!emailChange) { alert('Please enter a new email'); return; }
+                        try {
+                          const res = await authApi.requestEmailChange(emailChange);
+                          alert(res.message + " (Verification link logged by backend in dev)");
+                        } catch (e: any) {
+                          alert(e?.response?.data?.error || 'Failed to request email change');
+                        }
+                      }}
+                    >
+                      Request Change
+                    </Button>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            {/* Master Admin Management */}
+            {profile?.isMaster ? (
+              <Card>
+                <CardHeader><CardTitle>User Management (Master Admin)</CardTitle></CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="space-y-2">
+                    <Label>Create New User</Label>
+                    <div className="grid md:grid-cols-3 gap-2">
+                      <Input placeholder="Email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} />
+                      <Input placeholder="Password" type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} />
+                      <div className="flex items-center gap-2">
+                        <Switch checked={newUser.isMaster} onCheckedChange={(v: boolean) => setNewUser({ ...newUser, isMaster: v })} />
+                        <span>Master</span>
+                        <Button type="button" onClick={async () => {
+                          try {
+                            if (!newUser.email || !newUser.password) { alert('Email and password required'); return; }
+                            await adminApi.createUser(newUser);
+                            const list = await adminApi.listUsers();
+                            setUsers(list);
+                            setNewUser({ email: '', password: '', isMaster: false });
+                          } catch (e: any) { alert(e?.response?.data?.error || 'Failed to create user'); }
+                        }}>Add</Button>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Existing Users</Label>
+                    <div className="space-y-2">
+                      {users.map(u => (
+                        <div key={u.id} className="flex items-center justify-between border rounded p-3">
+                          <div className="flex items-center gap-3">
+                            <span className="text-sm">{u.email}</span>
+                            {u.isMaster ? <Badge>Master</Badge> : null}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                const email = prompt('New email (leave blank to keep)?', u.email) || undefined;
+                                const password = prompt('New password (leave blank to keep)?') || undefined;
+                                const isMaster = window.confirm('Should this user be master? OK = Yes, Cancel = No');
+                                try {
+                                  await adminApi.updateUser(u.id, { email, password, isMaster });
+                                  const list = await adminApi.listUsers();
+                                  setUsers(list);
+                                } catch (e: any) { alert(e?.response?.data?.error || 'Failed to update user'); }
+                              }}
+                            >Edit</Button>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={async () => {
+                                if (!window.confirm('Delete this user?')) return;
+                                try { await adminApi.deleteUser(u.id); setUsers(await adminApi.listUsers()); } catch (e: any) { alert(e?.response?.data?.error || 'Failed to delete user'); }
+                              }}
+                            >Delete</Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ) : null}
             <Card>
               <CardHeader><CardTitle>Security</CardTitle></CardHeader>
               <CardContent>

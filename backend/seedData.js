@@ -68,7 +68,7 @@ export const initialContent = {
         title: 'Backyard Makeover',
         category: 'Landscaping',
         description: 'Full landscape redesign with patio and lighting',
-        imageUrl: 'https://images.unsplash.com/photo-1596131280636-65b1cfd5a8bc?q=80&w=1600&auto=format&fit=crop',
+        imageUrl: 'https://images.unsplash.com/photo-1606313474141-2313c70d1ba9?q=80&w=1074&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
         location: 'Maple Grove, MN',
         duration: '3 weeks',
         featured: true
@@ -89,7 +89,7 @@ export const initialContent = {
         title: 'Commercial Snow Route',
         category: 'Snow & Ice',
         description: 'Plowing and ice management for a retail complex',
-        imageUrl: 'https://images.unsplash.com/photo-1607862442919-6cb7e64e5d3a?q=80&w=1600&auto=format&fit=crop',
+        imageUrl: 'https://images.unsplash.com/photo-1678309942964-6babf32d8a02?q=80&w=687&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
         location: 'Bloomington, MN',
         duration: 'Seasonal',
         featured: true
@@ -99,7 +99,7 @@ export const initialContent = {
         title: 'Residential Driveway',
         category: 'Snow Removal',
         description: 'Storm response with repeat clearings through blizzard',
-        imageUrl: 'https://images.unsplash.com/photo-1607649867894-7af6306f37fe?q=80&w=1600&auto=format&fit=crop',
+        imageUrl: 'https://plus.unsplash.com/premium_photo-1661335278560-f50e34f94a64?q=80&w=695&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D',
         location: 'Plymouth, MN',
         duration: '2 days'
       }

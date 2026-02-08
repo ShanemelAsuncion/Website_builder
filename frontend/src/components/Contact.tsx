@@ -7,8 +7,8 @@ import { Textarea } from "./ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Phone, Mail, MapPin, Clock, Send, CheckCircle, Loader2, Facebook } from "lucide-react";
 import { motion } from "motion/react";
-import axios from 'axios';
-import { contentApi } from "../services/api";
+import api, { contentApi } from "../services/api";
+import { getConfig } from "../services/runtimeConfig";
 
 interface ContactProps {
   season: 'summer' | 'winter';
@@ -24,6 +24,14 @@ export function Contact({ season }: ContactProps) {
   });
   const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
   const [responseMsg, setResponseMsg] = useState('');
+
+  // Brand name for subtext
+  const [brandName, setBrandName] = useState<string>("Jay's Blade and Snow Services");
+
+  // Services for dropdown (combined from both seasons)
+  const [services, setServices] = useState<Array<{ value: string; label: string }>>([]);
+  // Track the selected option's value for the Select control
+  const [selectedServiceValue, setSelectedServiceValue] = useState<string>('');
 
   const [contactInfo, setContactInfo] = useState<{ phone: string; email: string; address: string; hours?: string; weekendNote?: string; facebook?: string; facebookName?: string; facebookUrl?: string }>({
     phone: '(555) 123-4567',
@@ -51,9 +59,64 @@ export function Contact({ season }: ContactProps) {
             facebookUrl: parsed.facebookUrl ?? prev.facebookUrl,
           }));
         }
+
+        // Determine brand name: prefer runtime config SITE_NAME, else branding content name
+        try {
+          const cfg = getConfig();
+          if (cfg?.SITE_NAME) setBrandName(cfg.SITE_NAME);
+        } catch {}
+        try {
+          const brandingItem = items.find(i => i.key === 'branding');
+          if (brandingItem?.value) {
+            const branding = JSON.parse(brandingItem.value) as { name?: string };
+            if (branding?.name) setBrandName(branding.name);
+          }
+        } catch {}
       } catch {
         // keep fallbacks
       }
+    })();
+  }, []);
+
+  // Load services for BOTH seasons from DB and combine
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const combined: Array<{ value: string; label: string }> = [];
+        function mapArray(arr: Array<any>) {
+          for (const it of arr) {
+            if (typeof it === 'string') {
+              combined.push({ value: it, label: it });
+            } else if (it && it.title) {
+              const v = it.id || String(it.title).toLowerCase().replace(/\s+/g, '-');
+              combined.push({ value: v, label: it.title });
+            }
+          }
+        }
+        const summer = items.find(i => i.key === 'services.summer');
+        const winter = items.find(i => i.key === 'services.winter');
+        if (summer?.value) {
+          try { mapArray(JSON.parse(summer.value)); } catch {}
+        }
+        if (winter?.value) {
+          try { mapArray(JSON.parse(winter.value)); } catch {}
+        }
+        // Deduplicate by value
+        const seen = new Set<string>();
+        const deduped = combined.filter(s => (seen.has(s.value) ? false : (seen.add(s.value), true)));
+        if (deduped.length) {
+          setServices(deduped);
+          return;
+        }
+      } catch {}
+      // Fallback static options if DB lookup fails
+      setServices([
+        { value: 'lawn-care', label: 'Lawn Care & Maintenance' },
+        { value: 'landscaping', label: 'Landscape Design' },
+        { value: 'snow-removal', label: 'Snow Removal & Plowing' },
+        { value: 'ice-management', label: 'Ice Management' },
+      ]);
     })();
   }, []);
 
@@ -63,7 +126,15 @@ export function Contact({ season }: ContactProps) {
   };
 
   const handleServiceChange = (value: string) => {
-    setFormData(prev => ({ ...prev, service: value }));
+    // Map the selected value to its human-readable label
+    let selectedLabel = services.find(s => s.value === value)?.label;
+    if (!selectedLabel) {
+      if (value === 'multiple') selectedLabel = 'Multiple Services';
+      else if (value === 'consultation') selectedLabel = 'Free Consultation';
+      else selectedLabel = value;
+    }
+    setSelectedServiceValue(value);
+    setFormData(prev => ({ ...prev, service: selectedLabel! }));
   };
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -72,10 +143,11 @@ export function Contact({ season }: ContactProps) {
     setResponseMsg('');
 
     try {
-      const response = await axios.post<{ message: string }>('http://localhost:5000/api/contact', formData);
+      const response = await api.post<{ message: string }>('/contact', formData);
       setStatus('success');
       setResponseMsg(response.data.message);
       setFormData({ name: '', email: '', phone: '', service: '', message: '' });
+      setSelectedServiceValue('');
     } catch (error: any) {
       setStatus('error');
       setResponseMsg(error.response?.data?.error || 'An unexpected error occurred.');
@@ -239,15 +311,14 @@ export function Contact({ season }: ContactProps) {
 
                 <div className="space-y-2">
                   <Label htmlFor="service">Service Needed</Label>
-                  <Select onValueChange={handleServiceChange} value={formData.service}>
+                  <Select onValueChange={handleServiceChange} value={selectedServiceValue}>
                     <SelectTrigger className="h-12">
                       <SelectValue placeholder="What service are you interested in?" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="lawn-care">Lawn Care & Maintenance</SelectItem>
-                      <SelectItem value="snow-removal">Snow Removal & Plowing</SelectItem>
-                      <SelectItem value="landscaping">Landscape Design</SelectItem>
-                      <SelectItem value="ice-management">Ice Management</SelectItem>
+                      {services.map(s => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
                       <SelectItem value="multiple">Multiple Services</SelectItem>
                       <SelectItem value="consultation">Free Consultation</SelectItem>
                     </SelectContent>
@@ -286,7 +357,7 @@ export function Contact({ season }: ContactProps) {
                   </div>
                 )}
                 <p className="text-xs text-muted-foreground text-center leading-relaxed">
-                  By submitting this form, you agree to be contacted by ProSeason regarding your service request. 
+                  By submitting this form, you agree to be contacted by {brandName} regarding your service request.
                   We respect your privacy and never share your information.
                 </p>
               </form>

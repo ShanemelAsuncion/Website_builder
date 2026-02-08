@@ -1,23 +1,39 @@
 import dotenv from 'dotenv';
-import nodemailer from 'nodemailer';
-// Using inline styles directly to avoid needing CSS inlining libraries (Node 18 compatible)
+import { Resend } from 'resend';
 
 dotenv.config();
 
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-});
+// Resend HTTP API (HTTPS, allowed on Render)
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const resend = new Resend(RESEND_API_KEY);
 
-export async function sendContactEmail({ name, email, phone, service, message }) {
+// Helper: construct a Resend-compatible 'from' string. Resend allows
+// onboarding@resend.dev for testing. You can change MAIL_FROM to a verified
+// sender later.
+function getFromAddress(brand) {
+  const displayName = brand || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  const envFrom = process.env.MAIL_FROM && /@/.test(process.env.MAIL_FROM)
+    ? process.env.MAIL_FROM
+    : 'onboarding@resend.dev';
+  // If MAIL_FROM already includes a display name, use as-is; else compose one
+  if (envFrom.includes('<') && envFrom.includes('>')) return envFrom;
+  return `${displayName} <${envFrom}>`;
+}
+
+export async function sendContactEmail({ name, email, phone, service, message, brandName, logoUrl, assetBase }) {
   const recipient = process.env.CONTACT_RECIPIENT || process.env.EMAIL_USER;
   const sentOn = new Date().toLocaleString('en-US', {
     weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
     hour: '2-digit', minute: '2-digit'
   });
+  const derivedBrand = brandName || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  const derivedLogo = logoUrl || process.env.BRAND_LOGO_URL;
+  const backendOrigin = (assetBase || process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const absoluteLogo = derivedLogo && !/^https?:\/\//i.test(derivedLogo)
+    ? `${backendOrigin}${derivedLogo.startsWith('/') ? derivedLogo : '/' + derivedLogo}`
+    : derivedLogo;
+
+  // Password reset email HTML per provided template, with branding variables injected
   const html = `
       <!DOCTYPE html>
       <html>
@@ -33,10 +49,7 @@ export async function sendContactEmail({ name, email, phone, service, message })
               <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%; max-width:600px; background-color:#ffffff; border-radius:8px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
                 <tr>
                   <td align="center" style="background:linear-gradient(135deg,#2563eb 0%, #059669 100%); color:#ffffff; padding:30px 20px;">
-                    <div style="display:inline-block; background-color:rgba(255,255,255,0.1); border-radius:50px; padding:15px 25px; margin-bottom:15px;">
-                      <span style="font-size:32px; color:#ffffff; font-weight:bold; letter-spacing:1px;">❄️🌿</span>
-                    </div>
-                    <h1 style="color:#ffffff; font-size:28px; font-weight:bold; margin:0; text-shadow:0 2px 4px rgba(0,0,0,0.3);">Jay's Blade and Snow Services</h1>
+                    <h1 style="color:#ffffff; font-size:28px; font-weight:bold; margin:0; text-shadow:0 2px 4px rgba(0,0,0,0.3);">${derivedBrand}</h1>
                     <p style="color:rgba(255,255,255,0.9); font-size:16px; margin:8px 0 0 0; font-weight:300;">Professional Landscaping • Reliable Snow Removal</p>
                   </td>
                 </tr>
@@ -79,7 +92,7 @@ export async function sendContactEmail({ name, email, phone, service, message })
                     </div>
 
                     <div style="text-align:center; padding:20px 0;">
-                      <a href="mailto:${email}" style="display:inline-block; background-color:#2563eb; color:#ffffff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;">📞 Contact Customer Now</a>
+                      <a href="mailto:${email}" style="display:inline-block; background-color:#2563eb; color:#ffffff; padding:12px 24px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px;">✉️ Contact Customer Now</a>
                       <p style="color:#6b7280; font-size:14px; margin:10px 0 0 0;">Respond promptly to provide excellent customer service!</p>
                     </div>
                   </td>
@@ -100,21 +113,314 @@ export async function sendContactEmail({ name, email, phone, service, message })
       </html>
   `;
 
+  const fromAddress = getFromAddress(derivedBrand);
   const mailOptions = {
-    from: `"Blade and Snow Services" <${process.env.EMAIL_USER}>`,
+    from: fromAddress,
     to: recipient,
-    replyTo: email,
+    reply_to: email,
     subject: `New Quote Request: ${service}`,
-    text: `New Quote Request\n\nName: ${name}\nEmail: ${email}\nPhone: ${phone || 'Not provided'}\nService: ${service}\n\nMessage:\n${message}\n\nSent on: ${sentOn}`,
     html,
   };
 
   try {
-    const info = await transporter.sendMail(mailOptions);
-    console.log('Email sent:', info.response);
+    const info = await resend.emails.send(mailOptions);
+    console.log('Email sent (Resend):', info?.id || 'ok');
     return info;
   } catch (error) {
-    console.error('Error sending email:', error);
+    console.error('Error sending email:', {
+      message: error?.message,
+      via: 'resend',
+    });
     throw new Error('Failed to send email');
+  }
+}
+
+export async function sendPasswordResetEmail({ to, userName, brandName, supportEmail, siteUrl, logoUrl, resetUrl: overrideResetUrl, assetBase } = {}) {
+  const derivedBrand = brandName || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  const derivedSupport = supportEmail || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || 'support@jaysbladeandsnow.com';
+  const derivedSiteUrl = siteUrl || process.env.SITE_URL || 'http://localhost:3000';
+  const derivedUserName = userName || (to ? String(to).split('@')[0] : 'User');
+  const resetUrl = overrideResetUrl || `${derivedSiteUrl}/reset-password`;
+  const derivedLogo = logoUrl || process.env.BRAND_LOGO_URL;
+  const backendOriginPR = (assetBase || process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const absoluteLogoPR = derivedLogo && !/^https?:\/\//i.test(derivedLogo)
+    ? `${backendOriginPR}${derivedLogo.startsWith('/') ? derivedLogo : '/' + derivedLogo}`
+    : derivedLogo;
+
+  // Password reset email HTML per provided template, with branding variables injected
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Reset Your Password - ${derivedBrand}</title>
+    <style type="text/css">
+        @media only screen and (max-width: 600px) {
+            .email-container { width: 100% !important; max-width: 100% !important; }
+            .mobile-padding { padding: 25px 15px !important; }
+            .mobile-text { font-size: 14px !important; }
+            .mobile-header { font-size: 24px !important; }
+            .mobile-button { padding: 12px 24px !important; font-size: 14px !important; }
+        }
+    </style>
+</head>
+<body style="margin:0; padding:0; font-family: Arial, sans-serif; line-height:1.6; color:#333; background:#f9f9f9;">
+    <div style="padding:20px;">
+        <table class="email-container" cellpadding="0" cellspacing="0" border="0" style="width:100%; max-width:600px; margin:0 auto; background:#fff; border-radius:8px; overflow:hidden; box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+            <tr>
+                <td style="background: linear-gradient(135deg,#2563eb 0%,#059669 100%); padding:30px 20px; text-align:center;">
+                    <h1 style="color:#fff; font-size:28px; font-weight:bold; margin:0;" class="mobile-header">
+                        ${derivedBrand}
+                    </h1>
+                    <p style="color: rgba(255,255,255,0.9); font-size:16px; margin:8px 0 0 0; font-weight:300;">
+                        Professional Landscaping • Reliable Snow Removal
+                    </p>
+                </td>
+            </tr>
+            <tr>
+                <td style="padding:40px 30px;" class="mobile-padding">
+                    <div style="margin-bottom:30px;">
+                        <h2 style="color:#1e40af; font-size:24px; font-weight:bold; margin:0 0 15px 0;">
+                            Hello ${derivedUserName},
+                        </h2>
+                        <p style="color:#475569; font-size:18px; line-height:1.6; margin:0;" class="mobile-text">
+                            You requested to reset your password. Click the button below to proceed.
+                        </p>
+                    </div>
+                    <div style="background-color:#f8fafc; border:2px solid #e2e8f0; border-radius:12px; padding:30px; text-align:center; margin-bottom:30px;">
+                        <div style="margin-bottom:25px;">
+                            <div style="display:inline-block; background:#fef3c7; border-radius:50px; padding:15px; margin-bottom:15px;">
+                                <span style="font-size:32px; color:#d97706;">🔑</span>
+                            </div>
+                            <h3 style="color:#374151; font-size:20px; font-weight:bold; margin:0 0 10px 0;">
+                                Reset Your Password
+                            </h3>
+                            <p style="color:#6b7280; font-size:16px; margin:0; line-height:1.5;" class="mobile-text">
+                                Click the button below to securely reset your password and regain access to your account.
+                            </p>
+                        </div>
+                        <a href="${resetUrl}" style="display:inline-block; background-color:#2563eb; color:#fff; padding:14px 32px; border-radius:8px; text-decoration:none; font-weight:bold; font-size:16px; box-shadow:0 4px 6px rgba(37,99,235,0.25);" class="mobile-button">
+                            🔐 Reset Password
+                        </a>
+                    </div>
+                    <div style="background-color:#fef2f2; border:1px solid #fecaca; border-radius:8px; padding:20px; margin-bottom:25px;">
+                        <h4 style="color:#dc2626; font-size:16px; font-weight:bold; margin:0 0 10px 0;">
+                            🛡️ Security Notice
+                        </h4>
+                        <p style="color:#991b1b; font-size:14px; line-height:1.5; margin:0;" class="mobile-text">
+                            If you did not request a password reset, please ignore this email. The link will expire in 1 hour.
+                        </p>
+                    </div>
+                    <div style="text-align:center; padding:20px 0;">
+                        <p style="color:#6b7280; font-size:14px; margin:0 0 10px 0;" class="mobile-text">
+                            Need help? Contact us at:
+                        </p>
+                        <a href="mailto:${derivedSupport}" style="color:#2563eb; text-decoration:none; font-size:14px; font-weight:500;" class="mobile-text">
+                            ${derivedSupport}
+                        </a>
+                    </div>
+                </td>
+            </tr>
+            <tr>
+                <td style="background-color:#f3f4f6; padding:20px; text-align:center; border-top:1px solid #e5e7eb;">
+                    <p style="color:#6b7280; font-size:12px; margin:0; line-height:1.4;">
+                        This email was sent to reset your password for ${derivedBrand}.
+                    </p>
+                    <div style="margin-top:15px; padding-top:15px; border-top:1px solid #d1d5db;">
+                        <p style="color:#9ca3af; font-size:11px; margin:0;">
+                            ${derivedBrand} • Professional • Reliable • Trusted
+                        </p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>`;
+
+  const subject = `Reset your password - ${derivedBrand}`;
+  const text = `Hello ${derivedUserName},\n\nYou requested to reset your password. Visit: ${resetUrl}\n\nIf you did not request this, you can ignore this email.\n\n— ${derivedBrand}`;
+
+  const fromAddress = getFromAddress(derivedBrand);
+  const mailOptions = {
+    from: fromAddress,
+    to: to,
+    subject,
+    html,
+    text,
+  };
+  try {
+    const info = await resend.emails.send(mailOptions);
+    console.log('Password reset email sent (Resend):', info?.id || 'ok');
+    return info;
+  } catch (error) {
+    console.error('Error sending password reset email:', {
+      message: error?.message,
+      via: 'resend',
+    });
+    throw new Error('Failed to send password reset email');
+  }
+}
+
+export async function sendVerificationEmail({ to, verifyUrl, userName, brandName, supportEmail, siteUrl, logoUrl, assetBase } = {}) {
+  // Derive sensible defaults if not provided
+  const derivedBrand = brandName || process.env.BRAND_NAME || "Jay's Blade and Snow Services";
+  const derivedSupport = supportEmail || process.env.SUPPORT_EMAIL || process.env.EMAIL_USER || 'support@jaysbladeandsnow.com';
+  const derivedSiteUrl = siteUrl || process.env.SITE_URL || (verifyUrl ? new URL(verifyUrl).origin : 'http://localhost:3000');
+  const derivedUserName = userName || (to ? String(to).split('@')[0] : 'Admin');
+  const derivedLogo = logoUrl || process.env.BRAND_LOGO_URL;
+  const backendOriginV = (assetBase || process.env.BACKEND_URL || 'http://localhost:5000').replace(/\/$/, '');
+  const absoluteLogoV = derivedLogo && !/^https?:\/\//i.test(derivedLogo)
+    ? `${backendOriginV}${derivedLogo.startsWith('/') ? derivedLogo : '/' + derivedLogo}`
+    : derivedLogo;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verify Your Email - ${derivedBrand}</title>
+    <!--[if mso]>
+    <noscript>
+        <xml>
+            <o:OfficeDocumentSettings>
+                <o:PixelsPerInch>96</o:PixelsPerInch>
+            </o:OfficeDocumentSettings>
+        </xml>
+    </noscript>
+    <![endif]-->
+    <style type="text/css">
+        @media only screen and (max-width: 600px) {
+            .email-container {
+                width: 100% !important;
+                max-width: 100% !important;
+            }
+            .mobile-padding {
+                padding: 25px 15px !important;
+            }
+            .mobile-text {
+                font-size: 14px !important;
+            }
+            .mobile-header {
+                font-size: 24px !important;
+            }
+            .mobile-button {
+                padding: 12px 24px !important;
+                font-size: 14px !important;
+            }
+        }
+    </style>
+</head>
+<body style="margin: 0; padding: 0; font-family: Arial, sans-serif; line-height: 1.6; color: #333333; background-color: #f9f9f9;">
+    <div style="padding: 20px;">
+        <table cellpadding="0" cellspacing="0" border="0" class="email-container" style="width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+            <!-- Header -->
+            <tr>
+                <td style="background: linear-gradient(135deg, #2563eb 0%, #059669 100%); padding: 30px 20px; text-align: center;">
+                    <h1 style="color: #ffffff; font-size: 28px; font-weight: bold; margin: 0; text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);" class="mobile-header">
+                        ${derivedBrand}
+                    </h1>
+                    <p style="color: rgba(255, 255, 255, 0.9); font-size: 16px; margin: 8px 0 0 0; font-weight: 300;">
+                        Professional Landscaping • Reliable Snow Removal
+                    </p>
+                </td>
+            </tr>
+
+            <!-- Main Content -->
+            <tr>
+                <td style="padding: 40px 30px;" class="mobile-padding">
+                    <!-- Greeting -->
+                    <div style="margin-bottom: 30px;">
+                        <h2 style="color: #1e40af; font-size: 24px; font-weight: bold; margin: 0 0 15px 0;">
+                            Hello ${derivedUserName},
+                        </h2>
+                        <p style="color: #475569; font-size: 18px; line-height: 1.6; margin: 0;" class="mobile-text">
+                            Please verify your email to activate your account.
+                        </p>
+                    </div>
+
+                    <!-- Verification Card -->
+                    <div style="background-color: #f8fafc; border: 2px solid #e2e8f0; border-radius: 12px; padding: 30px; text-align: center; margin-bottom: 30px;">
+                        <div style="margin-bottom: 25px;">
+                            <div style="display: inline-block; background-color: #dcfce7; border-radius: 50px; padding: 15px; margin-bottom: 15px;">
+                                <span style="font-size: 32px; color: #059669;">✉️</span>
+                            </div>
+                            <h3 style="color: #374151; font-size: 20px; font-weight: bold; margin: 0 0 10px 0;">
+                                Verify Your Email Address
+                            </h3>
+                            <p style="color: #6b7280; font-size: 16px; margin: 0; line-height: 1.5;" class="mobile-text">
+                                Click the button below to confirm your email address and complete your account setup.
+                            </p>
+                        </div>
+
+                        <!-- Verification Button -->
+                        <a href="${derivedSiteUrl}/login" style="display: inline-block; background-color: #2563eb; color: #ffffff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px; box-shadow: 0 4px 6px rgba(37, 99, 235, 0.25);" class="mobile-button">
+                            ✅ Verify Email
+                        </a>
+                    </div>
+
+                    <!-- Additional Info -->
+                    <div style="background-color: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 20px; margin-bottom: 25px;">
+                        <h4 style="color: #9a3412; font-size: 16px; font-weight: bold; margin: 0 0 10px 0;">
+                            🔒 Security Notice
+                        </h4>
+                        <p style="color: #7c2d12; font-size: 14px; line-height: 1.5; margin: 0;" class="mobile-text">
+                            If you did not create an account with ${derivedBrand}, please ignore this email. 
+                            This verification link will expire in 24 hours for your security.
+                        </p>
+                    </div>
+
+                    <!-- Contact Info -->
+                    <div style="text-align: center; padding: 20px 0;">
+                        <p style="color: #6b7280; font-size: 14px; margin: 0 0 10px 0;" class="mobile-text">
+                            Need help? Contact us at:
+                        </p>
+                        <a href="mailto:${derivedSupport}" style="color: #2563eb; text-decoration: none; font-size: 14px; font-weight: 500;" class="mobile-text">
+                            ${derivedSupport}
+                        </a>
+                    </div>
+                </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+                <td style="background-color: #f3f4f6; padding: 20px; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="color: #6b7280; font-size: 12px; margin: 0; line-height: 1.4;">
+                        This email was sent to verify your account with ${derivedBrand}.
+                    </p>
+                    
+                    <div style="margin-top: 15px; padding-top: 15px; border-top: 1px solid #d1d5db;">
+                        <p style="color: #9ca3af; font-size: 11px; margin: 0;">
+                            ${derivedBrand} • Professional • Reliable • Trusted
+                        </p>
+                    </div>
+                </td>
+            </tr>
+        </table>
+    </div>
+</body>
+</html>`;
+
+  const subject = `Verify your email - ${derivedBrand}`;
+  const text = `Hello ${derivedUserName},\n\nPlease verify your email to activate your account.\n\nVerification link: ${verifyUrl}\n\nIf you did not request this, you can ignore this email.\n\n— ${derivedBrand}`;
+
+  const fromAddress = getFromAddress(derivedBrand);
+  const mailOptions = {
+    from: fromAddress,
+    to,
+    subject,
+    html,
+    text,
+  };
+  try {
+    const info = await resend.emails.send(mailOptions);
+    console.log('Verification email sent (Resend):', info?.id || 'ok');
+    return info;
+  } catch (error) {
+    console.error('Error sending verification email:', {
+      message: error?.message,
+      via: 'resend',
+    });
+    throw new Error('Failed to send verification email');
   }
 }

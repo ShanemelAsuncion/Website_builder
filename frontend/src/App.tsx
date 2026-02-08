@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Header } from './components/Header';
@@ -13,6 +13,9 @@ import { Login } from './components/admin/Login';
 import { Dashboard } from './components/admin/Dashboard';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AdminLayout } from './components/admin/AdminLayout';
+import { contentApi } from './services/api';
+import { SeasonalTutorial } from './components/SeasonalTutorial';
+import ResetPassword from './components/ResetPassword';
 
 function MainContent({ season, toggleSeason }: { season: 'summer' | 'winter'; toggleSeason: () => void }) {
   return (
@@ -25,6 +28,8 @@ function MainContent({ season, toggleSeason }: { season: 'summer' | 'winter'; to
         className="min-h-screen"
       >
         <Header season={season} onSeasonToggle={toggleSeason} />
+        {/* Seasonal tutorial: shown once per day on homepage */}
+        <SeasonalTutorial season={season} onSeasonToggle={toggleSeason} />
         <Hero season={season} />
         <Services season={season} />
         <Work season={season} />
@@ -39,16 +44,96 @@ function MainContent({ season, toggleSeason }: { season: 'summer' | 'winter'; to
 
 export default function App() {
   const [season, setSeason] = useState<'summer' | 'winter'>('summer');
+  const [branding, setBranding] = useState<{ name?: string; logoUrl?: string }>({});
 
   const toggleSeason = () => {
     setSeason(season === 'summer' ? 'winter' : 'summer');
   };
+
+  // Browser tab: title + favicon from branding
+  useEffect(() => {
+    (async () => {
+      try {
+        const items = (await contentApi.getAll()) as Array<{ key: string; value: string }>;
+        const bItem = items.find(i => i.key === 'branding');
+        if (bItem?.value) {
+          try { setBranding(JSON.parse(bItem.value)); } catch {}
+        }
+      } catch {}
+    })();
+    try {
+      const cached = localStorage.getItem('cache:branding');
+      if (cached) setBranding(JSON.parse(cached));
+    } catch {}
+
+    const applyBrandingToTab = (b?: { name?: string; logoUrl?: string }) => {
+      if (!b) b = branding;
+      if (b?.name) document.title = b.name;
+      // Set favicon (fallback to removing if not available)
+      let link: HTMLLinkElement | null = document.querySelector("link#dynamic-favicon");
+      if (!link) {
+        link = document.createElement('link');
+        link.id = 'dynamic-favicon';
+        link.rel = 'icon';
+        document.head.appendChild(link);
+      }
+      if (b?.logoUrl) {
+        link.href = b.logoUrl;
+      } else {
+        // Remove href to avoid stale icon
+        link.href = '';
+      }
+    };
+
+    applyBrandingToTab();
+
+    const refreshFromCache = () => {
+      try {
+        const cached = localStorage.getItem('cache:branding');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          setBranding(parsed);
+          applyBrandingToTab(parsed);
+        }
+      } catch {}
+    };
+    const onUpdated = (e: Event) => {
+      const ce = e as CustomEvent;
+      if (ce.detail?.persisted) refreshFromCache();
+    };
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'cache:branding') refreshFromCache();
+    };
+    window.addEventListener('content-updated', onUpdated);
+    window.addEventListener('storage', onStorage);
+    return () => {
+      window.removeEventListener('content-updated', onUpdated);
+      window.removeEventListener('storage', onStorage);
+    };
+  }, []);
+
+  // Apply branding to tab whenever branding state changes
+  useEffect(() => {
+    const name = branding?.name;
+    if (name) document.title = name;
+    let link: HTMLLinkElement | null = document.querySelector('link#dynamic-favicon');
+    if (!link) {
+      link = document.createElement('link');
+      link.id = 'dynamic-favicon';
+      link.rel = 'icon';
+      document.head.appendChild(link);
+    }
+    if (branding?.logoUrl) {
+      link.href = branding.logoUrl;
+    }
+  }, [branding]);
 
   return (
     <Router>
       <Routes>
         {/* Public Routes */}
         <Route path="/" element={<MainContent season={season} toggleSeason={toggleSeason} />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
         
         {/* Admin Routes */}
         <Route 
