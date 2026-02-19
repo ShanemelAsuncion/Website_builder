@@ -52,6 +52,17 @@ const app = express();
 app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
+// --- ADDED: ROOT ROUTE & HEALTH CHECK ---
+// This fixes the "Cannot GET /" error on Render
+app.get('/', (req, res) => {
+  res.status(200).json({
+    status: 'online',
+    service: "Jay's Blade and Snow Services API",
+    database: process.env.USE_SUPABASE_DB === 'true' ? 'Supabase' : 'Local SQLite',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // Use a consistent JWT secret for development
 // This secret is used for both signing and verifying tokens
 const JWT_SECRET = process.env.JWT_SECRET || 'your-super-secret-key-1234567890';
