@@ -1,19 +1,47 @@
-name: Keep Everything Alive
+name: Keep Everything Alive (Aggressive)
+
 on:
   schedule:
-    # Runs at 00:00 every day
-    - cron: '0 0 * * *'
-  workflow_dispatch: # Still allows manual testing
+    # Runs at 00:00 and 12:00 UTC every day
+    - cron: '0 0,12 * * *'
+  workflow_dispatch: 
+
 jobs:
   ping_services:
     runs-on: ubuntu-latest
     steps:
-      - name: Ping Supabase API (Prevents Pausing)
+      - name: Random Delay
+        # Spreading out hits prevents GitHub/Supabase from flagging synchronized bot patterns
+        run: sleep $((RANDOM % 300))
+
+      - name: Aggressive Supabase Write (Prevents Pausing)
+        env:
+          SUPABASE_URL: "https://jnqoeraxlajlwofvcawf.supabase.co"
+          # IMPORTANT: Use the SERVICE_ROLE_KEY for this, not the ANON_KEY
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
         run: |
-          curl -i -X GET "https://jnqoeraxlajlwofvcawf.supabase.co/rest/v1/users?select=id&limit=1" \
-          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}" \
-          -H "Authorization: Bearer ${{ secrets.SUPABASE_ANON_KEY }}"
+          # 1. Insert a dummy row to force 'Write' activity
+          # Note: Assumes you created the 'keep_alive' table mentioned earlier
+          ID=$(curl -s -X POST "${SUPABASE_URL}/rest/v1/keep_alive" \
+            -H "apikey: ${SUPABASE_KEY}" \
+            -H "Authorization: Bearer ${SUPABASE_KEY}" \
+            -H "Content-Type: application/json" \
+            -H "Prefer: return=representation" \
+            -d '{"created_at": "now()"}' | jq -r '.[0].id')
+
+          if [ "$ID" != "null" ] && [ -n "$ID" ]; then
+            echo "✅ Write Successful: $ID"
+            # 2. Immediately delete it to keep your DB clean
+            curl -s -X DELETE "${SUPABASE_URL}/rest/v1/keep_alive?id=eq.${ID}" \
+              -H "apikey: ${SUPABASE_KEY}" \
+              -H "Authorization: Bearer ${SUPABASE_KEY}"
+            echo "✅ Cleanup Successful."
+          else
+            echo "❌ Supabase Write Failed. Check your Table or Service Key."
+            exit 1
+          fi
 
       - name: Ping Render Backend (Prevents Sleeping)
+        # Render just needs a simple GET to stay awake
         run: |
-          curl -i -X GET "https://website-builder-3hm1.onrender.com"
+          curl -f -i -X GET "https://website-builder-3hm1.onrender.com"
